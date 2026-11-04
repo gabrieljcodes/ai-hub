@@ -489,7 +489,13 @@ fn build_api_router(state: crate::WebState, cors_origins: &[String]) -> axum::Ro
         .collect();
     let cors = CorsLayer::new()
         .allow_origin(parsed)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
@@ -563,7 +569,26 @@ fn mount_builtin_public(
     if slug.is_empty() {
         public
     } else {
-        axum::Router::new().nest(slug, public)
+        let canonical = {
+            let trimmed = base_href.trim_end_matches('/');
+            if trimmed.is_empty() {
+                slug.to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        axum::Router::new()
+            .route(
+                "/",
+                axum::routing::get(move |uri: axum::http::Uri| {
+                    let to = match uri.query() {
+                        Some(q) if !q.is_empty() => format!("{canonical}?{q}"),
+                        _ => canonical.clone(),
+                    };
+                    async move { axum::response::Redirect::temporary(&to) }
+                }),
+            )
+            .nest(slug, public)
     }
 }
 
