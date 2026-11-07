@@ -5,8 +5,10 @@
 {% block header_search %}{% include "_header_search_scoped.html" %}{% endblock %}
 
 {% block content %}
-<nav class="breadcrumbs" aria-label="Breadcrumb"><a href=".">Projects</a><span>/</span><span>{{ workspace }}</span><span>/</span><span aria-current="page">{{ project }}</span></nav>
-<div class="page-heading"><div><p class="eyebrow">PROJECT WORKSPACE</p><h1>{{ project }}</h1><p>Understand your agents, inspect their sessions, and find expensive calls.</p></div><a href="{{ inbox_href }}#compose" class="primary-button">✉ Message an agent</a></div>
+<nav class="breadcrumbs mono" aria-label="Breadcrumb"><a href=".">Projects</a><span>/</span><span>{{ workspace }}</span><span>/</span><span aria-current="page">{{ project }}</span></nav>
+<div class="page-heading"><div><p class="eyebrow mono">// WORKSPACE: {{ workspace }}</p><h1>{{ project }}</h1><p>Plane-style task board, GitHub Issues &amp; PRs, team access control, agent telemetry, and Git-backed Markdown memory.</p></div><a href="{{ inbox_href }}#compose" class="primary-button mono">Message an agent →</a></div>
+{% include "_hub_project_workspace.html" %}
+<div id="hub-memory-ops-shell" class="hub-memory-ops-shell">
 <div class="project-navigation">
   <nav class="project-tabs" role="tablist" aria-label="Project sections">
     <a id="project-tab-overview" href="{{ project_href }}?tab=overview" role="tab" aria-controls="project-panel-overview" aria-selected="true" data-project-tab="overview">Overview</a>
@@ -19,14 +21,14 @@
 </div>
 <noscript><style>.project-panel[hidden]{display:block}</style></noscript>
 <section id="project-panel-overview" class="project-panel" role="tabpanel" aria-labelledby="project-tab-overview" tabindex="0">
-  <div class="section-heading"><div><p class="eyebrow">AT A GLANCE</p><h2>Project overview</h2><p>Capture, activity, and pending messages. Choose a tab to explore the details.</p></div></div>
+  <div class="section-heading"><div><p class="eyebrow mono">// AT A GLANCE</p><h2>Project overview</h2><p>Capture, activity, and pending messages. Choose a tab to explore the details.</p></div></div>
 <section id="project-capture-summary" aria-label="Project capture summary" class="section-block">
   <div class="metric-grid project-memory-grid">
-    <article class="metric-card"><span>Sessions</span><strong>{{ stats.session_count }}</strong><small>Registered activity</small></article>
-    <article class="metric-card"><span>Captured events</span><strong>{{ stats.observation_count }}</strong><small>Sanitized observations</small></article>
-    <article class="metric-card"><span>Compiled pages</span><strong>{{ stats.page_count }}</strong><small>Knowledge for recall</small></article>
-    <article class="metric-card metric-attention"><span>Open sessions</span><strong>{{ stats.open_session_count }}</strong><small>No end event received</small></article>
-    <article class="metric-card"><span>Tokens (in / out)</span><strong style="font-size:23px">{{ stats.tokens_total }}</strong><small>Reported session totals</small></article>
+    <article class="metric-card"><span>Sessions</span><span class="metric-marker mono" aria-hidden="true">[01]</span><strong>{{ stats.session_count }}</strong><small>Registered activity</small></article>
+    <article class="metric-card"><span>Captured events</span><span class="metric-marker mono" aria-hidden="true">[02]</span><strong>{{ stats.observation_count }}</strong><small>Sanitized observations</small></article>
+    <article class="metric-card"><span>Compiled pages</span><span class="metric-marker mono" aria-hidden="true">[03]</span><strong>{{ stats.page_count }}</strong><small>Knowledge for recall</small></article>
+    <article class="metric-card metric-attention"><span>Open sessions</span><span class="metric-marker mono" aria-hidden="true">[04]</span><strong>{{ stats.open_session_count }}</strong><small>No end event received</small></article>
+    <article class="metric-card"><span>Tokens (in / out)</span><span class="metric-marker mono" aria-hidden="true">[05]</span><strong style="font-size:21px">{{ stats.tokens_total }}</strong><small>Reported session totals</small></article>
   </div>
   <p class="mt-4 text-xs text-slate-500 dark:text-slate-400">
     {% if stats.last_activity_relative != "" %}Last capture {{ stats.last_activity_relative }}. {% endif %}
@@ -230,6 +232,7 @@
   {% endif %}
 </div>
 </section>
+</div>
 {% include "_project_tabs_script.html" %}
 {% include "_dashboard_refresh.html" %}
 {% endblock %}

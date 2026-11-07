@@ -1,35 +1,46 @@
 {% extends "base.html" %}
 
-{% block title %}Projects — ai-memory{% endblock %}
+{% block title %}Projects — ai-hub{% endblock %}
 
 {% block content %}
-<div class="page-heading"><div><p class="eyebrow">WORKSPACE OVERVIEW</p><h1>Memory dashboard</h1><p>Track activity, investigate token usage, and coordinate your agents.</p></div><a href="inbox" class="primary-button">✉ Open inbox</a></div>
+<div class="page-heading">
+  <div>
+    <p class="eyebrow mono">// WORKSPACE CONTROL PLANE · Memory dashboard</p>
+    <h1>Projects, Tasks &amp; Memory</h1>
+    <p>Coordinate engineering tasks, GitHub repositories, team permissions, and Git-backed agent memory in one workspace.</p>
+  </div>
+  <div class="hub-heading-actions">
+    <button type="button" id="hub-new-project-btn" class="primary-button mono">+ New Project</button>
+    <a href="inbox" class="secondary-button mono">Agent Inbox →</a>
+  </div>
+</div>
+
 <section aria-label="Memory health overview"><div class="metric-grid">
-  <article class="metric-card"><span>Projects</span><span class="metric-marker" aria-hidden="true">▦</span><strong>{{ dashboard.project_count }}</strong><small>Visible in your workspace</small></article>
-  <article class="metric-card"><span>Sessions</span><span class="metric-marker" aria-hidden="true">◈</span><strong>{{ dashboard.session_count }}</strong><small>Across registered agents</small></article>
-  <article class="metric-card"><span>Captured events</span><span class="metric-marker" aria-hidden="true">⌁</span><strong>{{ dashboard.observation_count }}</strong><small>Sanitized activity records</small></article>
-  <article class="metric-card"><span>Compiled pages</span><span class="metric-marker" aria-hidden="true">☷</span><strong>{{ dashboard.page_count }}</strong><small>Knowledge ready for recall</small></article>
-  <article class="metric-card metric-attention"><span>Open sessions</span><span class="metric-marker" aria-hidden="true">◷</span><strong>{{ dashboard.open_session_count }}</strong><small>No session-end event received</small></article>
-</div><p class="section-note">{% if dashboard.last_activity_relative != "" %}Last capture {{ dashboard.last_activity_relative }}. {% endif %}Open means no SessionEnd was received; it can be an active agent or an interruption. Counts are metadata only; raw prompts and commands remain in scoped detail views.</p></section>
+  <article class="metric-card"><span>Projects</span><span class="metric-marker mono" aria-hidden="true">[01]</span><strong>{{ dashboard.project_count }}</strong><small>Visible in workspace</small></article>
+  <article class="metric-card"><span>Sessions</span><span class="metric-marker mono" aria-hidden="true">[02]</span><strong>{{ dashboard.session_count }}</strong><small>Registered agent runs</small></article>
+  <article class="metric-card"><span>Captured events</span><span class="metric-marker mono" aria-hidden="true">[03]</span><strong>{{ dashboard.observation_count }}</strong><small>Sanitized observations</small></article>
+  <article class="metric-card"><span>Compiled pages</span><span class="metric-marker mono" aria-hidden="true">[04]</span><strong>{{ dashboard.page_count }}</strong><small>Git-backed MD pages</small></article>
+  <article class="metric-card metric-attention"><span>Open sessions</span><span class="metric-marker mono" aria-hidden="true">[05]</span><strong>{{ dashboard.open_session_count }}</strong><small>Active or awaiting end</small></article>
+</div><p class="section-note mono">{% if dashboard.last_activity_relative != "" %}LAST_CAPTURE={{ dashboard.last_activity_relative }} · {% endif %}Open means no SessionEnd was received; it can be an active agent or an interruption. Counts are metadata only; raw prompts and commands remain in scoped detail views.</p></section>
 
 {% if let Some(ingest) = dashboard.ingest %}
 <section aria-label="Hook capture health" class="capture-health">
   <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Hook capture health</h2>
-    <p class="text-xs text-slate-500">Since this server started; counters contain no prompt or command content.</p>
+    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100 mono">// HOOK_INGEST_TELEMETRY</h2>
+    <p class="text-xs text-slate-500 mono">Since server boot · metadata counters only</p>
   </div>
-  <div class="memory-hook-health-grid mt-4 text-sm">
-    <div><div class="text-slate-500">Accepted</div><div class="mt-1 text-xl font-semibold text-emerald-700 dark:text-emerald-300">{{ ingest.accepted }}</div></div>
-    <div><div class="text-slate-500">Policy-dropped</div><div class="mt-1 text-xl font-semibold">{{ ingest.dropped_by_policy }}</div></div>
-    <div><div class="text-slate-500">Capacity-shed</div><div class="mt-1 text-xl font-semibold {% if ingest.shed_saturated > 0 %}text-amber-700 dark:text-amber-300{% endif %}">{{ ingest.shed_saturated }}</div></div>
-    <div><div class="text-slate-500">Rate-limited</div><div class="mt-1 text-xl font-semibold {% if ingest.shed_rate_limited > 0 %}text-amber-700 dark:text-amber-300{% endif %}">{{ ingest.shed_rate_limited }}</div></div>
+  <div class="memory-hook-health-grid mt-4 text-sm mono">
+    <div><div class="text-slate-500">ACCEPTED</div><div class="mt-1 text-xl font-semibold text-emerald-700 dark:text-emerald-300">{{ ingest.accepted }}</div></div>
+    <div><div class="text-slate-500">POLICY_DROPPED</div><div class="mt-1 text-xl font-semibold">{{ ingest.dropped_by_policy }}</div></div>
+    <div><div class="text-slate-500">CAPACITY_SHED</div><div class="mt-1 text-xl font-semibold {% if ingest.shed_saturated > 0 %}text-amber-700 dark:text-amber-300{% endif %}">{{ ingest.shed_saturated }}</div></div>
+    <div><div class="text-slate-500">RATE_LIMITED</div><div class="mt-1 text-xl font-semibold {% if ingest.shed_rate_limited > 0 %}text-amber-700 dark:text-amber-300{% endif %}">{{ ingest.shed_rate_limited }}</div></div>
   </div>
 </section>
 {% endif %}
 
 {% if mail_total > 0 %}
-<div class="mb-6 rounded-md border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-  <span class="font-medium">{{ mail_total }} message{% if mail_total != 1 %}s{% endif %} waiting for agents</span>
+<div class="mb-6 rounded-md border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200 mono">
+  <span class="font-medium">[QUEUE: {{ mail_total }} message{% if mail_total != 1 %}s{% endif %} waiting for agents]</span>
   <span class="text-amber-800 dark:text-amber-300/90">in
   {% for item in mail_projects %}<a href="{{ item.href }}" class="font-medium underline hover:text-amber-950 dark:hover:text-amber-100">{{ item.label }}</a> ({{ item.pending }}){% if !loop.last %}, {% endif %}{% endfor %}{% if mail_hidden > 0 %} and {{ mail_hidden }} more project{% if mail_hidden != 1 %}s{% endif %}{% endif %}.</span>
 </div>
@@ -94,7 +105,6 @@
     } catch (e) { /* storage blocked: still show the dialog */ }
     var closeBtn = document.getElementById("okf-dialog-close");
     var dismiss = document.getElementById("okf-dialog-dismiss");
-    // aria-modal alone moves no focus: remember the opener to hand it back.
     var opener = document.activeElement;
     function close() {
       if (dismiss.checked) {
@@ -104,7 +114,6 @@
       document.removeEventListener("keydown", onKey);
       if (opener && opener.isConnected && typeof opener.focus === "function") opener.focus();
     }
-    // Only two focusables, so Tab wraps by hand to keep focus inside the modal.
     function onKey(e) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -131,22 +140,196 @@
 </script>
 {% endif %}
 
+<div class="project-toolbar">
+  <h2>Active Repositories &amp; Projects <span class="subtle-pill mono">{{ projects.len() }}</span></h2>
+  <label class="sr-only" for="project-filter">Filter projects</label>
+  <input id="project-filter" type="search" class="mono" placeholder="Filter by workspace or project…" autocomplete="off">
+  <label class="sr-only" for="project-state">Project activity filter</label>
+  <select id="project-state" class="mono">
+    <option value="all">ALL_PROJECTS</option>
+    <option value="open">OPEN_SESSIONS</option>
+    <option value="inbox">PENDING_INBOX</option>
+  </select>
+</div>
 
-<div class="project-toolbar"><h2>Your projects <span class="subtle-pill">{{ projects.len() }}</span></h2><label class="sr-only" for="project-filter">Filter projects</label><input id="project-filter" type="search" placeholder="Filter projects…" autocomplete="off"><label class="sr-only" for="project-state">Project activity filter</label><select id="project-state"><option value="all">All projects</option><option value="open">With open sessions</option><option value="inbox">With queued messages</option></select></div>
-{% if projects.is_empty() %}<div class="empty-state"><span aria-hidden="true">▦</span><h2>Your workspace starts here</h2><p>No projects yet — wire up a hook and start a session.</p></div>{% else %}
+{% if projects.is_empty() %}
+<div class="empty-state">
+  <span class="mono" aria-hidden="true">&gt;_</span>
+  <h2>No projects initialized yet</h2>
+  <p>Create your first engineering project to track tasks, connect GitHub repositories, manage team permissions, and compile Git-backed Markdown memory.</p>
+  <button type="button" id="hub-empty-new-project-btn" class="primary-button mono mt-4">+ Initialize First Project</button>
+</div>
+{% else %}
 <div class="project-cards-grid" id="project-cards">
 {% for card in projects %}
-<article class="project-card" data-project-search="{{ card.workspace }} {{ card.project }} {{ card.agent_summary }}" data-open="{{ card.open_session_count }}" data-inbox="{{ card.pending_inbox }}">
-  <div class="project-card-top"><span class="project-icon" aria-hidden="true">▧</span><div class="project-card-title"><span>{{ card.workspace }}</span><h3><a aria-label="Open {{ card.workspace }}/{{ card.project }}" href="{{ card.href }}">{{ card.project }}</a></h3></div>{% if card.pending_inbox > 0 %}<a href="{{ card.inbox_href }}" class="status-pill status-open" title="Messages waiting for an agent">{{ card.pending_inbox }} inbox</a>{% endif %}</div>
-  <p class="card-hint">{% if card.agent_summary != "" %}{{ card.agent_summary }}{% else %}No agent sessions yet{% endif %}</p>
-  <div class="project-card-metrics"><div class="project-card-metric"><span>Sessions</span><strong>{{ card.session_count }}</strong></div><div class="project-card-metric"><span>Captured events</span><strong>{{ card.observation_count }}</strong></div><div class="project-card-metric"><span>Compiled pages</span><strong>{{ card.page_count }} <small>page{% if card.page_count != 1 %}s{% endif %}</small></strong></div><div class="project-card-metric"><span>Open sessions</span><strong>{{ card.open_session_count }}</strong></div></div>
-  <div class="project-card-footer"><span>{% if card.last_updated_relative != "" %}Last capture {{ card.last_updated_relative }}{% else %}No capture yet{% endif %}</span><a href="{{ card.href }}?tab=agents">Explore agents ↗</a></div>
+<article class="project-card" data-project-search="{{ card.workspace }} {{ card.project }} {{ card.agent_summary }}" data-workspace="{{ card.workspace }}" data-project="{{ card.project }}" data-open="{{ card.open_session_count }}" data-inbox="{{ card.pending_inbox }}">
+  <div class="project-card-top">
+    <span class="project-icon mono" aria-hidden="true" data-hub-prefix="{{ card.workspace }}/{{ card.project }}">PRJ</span>
+    <div class="project-card-title">
+      <span class="mono">{{ card.workspace }} /</span>
+      <h3><a aria-label="Open {{ card.workspace }}/{{ card.project }}" href="{{ card.href }}">{{ card.project }}</a></h3>
+    </div>
+    <span class="hub-card-badges" data-hub-badges="{{ card.workspace }}/{{ card.project }}"></span>
+    {% if card.pending_inbox > 0 %}<a href="{{ card.inbox_href }}" class="status-pill status-open mono" title="Messages waiting for an agent">{{ card.pending_inbox }} inbox</a>{% endif %}
+  </div>
+  <p class="card-hint" data-hub-desc="{{ card.workspace }}/{{ card.project }}">{% if card.agent_summary != "" %}{{ card.agent_summary }}{% else %}No agent sessions recorded yet{% endif %}</p>
+  <div class="hub-card-strip mono" data-hub-stats="{{ card.workspace }}/{{ card.project }}"></div>
+  <div class="project-card-metrics">
+    <div class="project-card-metric"><span>Sessions</span><strong>{{ card.session_count }}</strong></div>
+    <div class="project-card-metric"><span>Captured events</span><strong>{{ card.observation_count }}</strong></div>
+    <div class="project-card-metric"><span>Compiled pages</span><strong>{{ card.page_count }} <small>page{% if card.page_count != 1 %}s{% endif %}</small></strong></div>
+    <div class="project-card-metric"><span>Open sessions</span><strong>{{ card.open_session_count }}</strong></div>
+  </div>
+  <div class="project-card-footer mono">
+    <span>{% if card.last_updated_relative != "" %}SYNC {{ card.last_updated_relative }}{% else %}NO_CAPTURE_YET{% endif %}</span>
+    <div class="hub-card-links">
+      <a href="{{ card.href }}">Board &amp; Hub →</a>
+      <a href="{{ card.href }}?tab=agents">Agents ↗</a>
+    </div>
+  </div>
 </article>
 {% endfor %}
 </div>
-<p class="project-result-count" id="project-result-count" role="status" aria-live="polite"></p><div id="project-filter-empty" class="empty-state" hidden><h3>No projects match these filters</h3><p>Try another name or switch back to all projects.</p></div>
+<p class="project-result-count mono" id="project-result-count" role="status" aria-live="polite"></p>
+<div id="project-filter-empty" class="empty-state" hidden><h3>No projects match these filters</h3><p>Try another query or reset the filter to ALL_PROJECTS.</p></div>
 <script>
 (function(){var input=document.getElementById("project-filter"),state=document.getElementById("project-state"),cards=Array.from(document.querySelectorAll("article[data-project-search]"));function filter(){var term=input.value.trim().toLocaleLowerCase(),count=0;cards.forEach(function(card){var match=card.dataset.projectSearch.toLocaleLowerCase().includes(term)&&(state.value==="all"||(state.value==="open"&&Number(card.dataset.open)>0)||(state.value==="inbox"&&Number(card.dataset.inbox)>0));card.hidden=!match;if(match)count++;});document.getElementById("project-filter-empty").hidden=count!==0;document.getElementById("project-result-count").textContent=term||state.value!=="all"?count+" of "+cards.length+" projects":"";}input.addEventListener("input",filter);state.addEventListener("change",filter);})();
 </script>{% endif %}
-<details class="section-note section-block"><summary>About compiled memory</summary><p>Pages are compiled from captured observations for agent retrieval. Use project details to audit sessions and inspect the underlying events.</p></details>
+
+<!-- Modal: Create New Project -->
+<div id="hub-modal-new-project" class="hub-modal-backdrop" hidden>
+  <div class="hub-modal" role="dialog" aria-modal="true" aria-labelledby="hub-new-proj-title">
+    <div class="hub-modal-header">
+      <div>
+        <span class="hub-eyebrow mono">// INITIALIZE REPOSITORY SCOPE</span>
+        <h2 id="hub-new-proj-title">Create Project</h2>
+      </div>
+      <button type="button" class="hub-icon-btn mono" id="hub-close-new-project" aria-label="Close">✕</button>
+    </div>
+    <form id="hub-new-project-form" class="hub-modal-body hub-form">
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label mono" for="hub-proj-workspace">WORKSPACE</label>
+          <input id="hub-proj-workspace" type="text" class="hub-input mono" value="default" required>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label mono" for="hub-proj-name">PROJECT SLUG <span class="hub-req">*</span></label>
+          <input id="hub-proj-name" type="text" class="hub-input mono" placeholder="e.g. core-platform" required>
+        </div>
+      </div>
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label mono" for="hub-proj-prefix">ISSUE KEY PREFIX</label>
+          <input id="hub-proj-prefix" type="text" class="hub-input mono" placeholder="e.g. CORE" maxlength="8">
+          <span class="hub-hint">Used for task keys like <code>CORE-1</code>, <code>CORE-2</code>.</span>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label mono" for="hub-proj-access">ACCESS CONTROL</label>
+          <select id="hub-proj-access" class="hub-select">
+            <option value="restricted">Restricted (Invited team members only)</option>
+            <option value="open">Open (All authenticated users)</option>
+          </select>
+        </div>
+      </div>
+      <div class="hub-field">
+        <label class="hub-label mono" for="hub-proj-desc">DESCRIPTION</label>
+        <textarea id="hub-proj-desc" class="hub-textarea" rows="3" placeholder="Architecture scope, repository objectives, or team ownership…"></textarea>
+      </div>
+      <p id="hub-new-proj-error" class="hub-alert hub-alert-danger mono" hidden></p>
+      <div class="hub-modal-footer">
+        <button type="button" class="hub-btn hub-btn-secondary mono" id="hub-cancel-new-project">Cancel</button>
+        <button type="submit" class="hub-btn hub-btn-primary mono">Initialize Project →</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var basePath = document.querySelector('meta[name="ai-memory-base-path"]')?.content || "";
+  var apiBase = basePath + "/api/v1/hub";
+  var modal = document.getElementById("hub-modal-new-project");
+  var openBtn = document.getElementById("hub-new-project-btn");
+  var emptyBtn = document.getElementById("hub-empty-new-project-btn");
+  var closeBtn = document.getElementById("hub-close-new-project");
+  var cancelBtn = document.getElementById("hub-cancel-new-project");
+  var form = document.getElementById("hub-new-project-form");
+  var errEl = document.getElementById("hub-new-proj-error");
+
+  function openModal() { if (modal) modal.hidden = false; }
+  function closeModal() { if (modal) modal.hidden = true; }
+  if (openBtn) openBtn.addEventListener("click", openModal);
+  if (emptyBtn) emptyBtn.addEventListener("click", openModal);
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      errEl.hidden = true;
+      var ws = document.getElementById("hub-proj-workspace").value.trim() || "default";
+      var proj = document.getElementById("hub-proj-name").value.trim();
+      var prefix = document.getElementById("hub-proj-prefix").value.trim();
+      var access = document.getElementById("hub-proj-access").value;
+      var desc = document.getElementById("hub-proj-desc").value.trim();
+      fetch(apiBase + "/projects", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace: ws,
+          project: proj,
+          identifier_prefix: prefix || null,
+          access_mode: access,
+          description: desc
+        })
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok) {
+            errEl.textContent = (res.j && res.j.error) || "Failed to create project";
+            errEl.hidden = false;
+            return;
+          }
+          location.assign("w/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj));
+        });
+    });
+  }
+
+  // Enrich project cards with Hub task/member/GitHub counters
+  fetch(apiBase + "/projects", { credentials: "include" })
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (list) {
+      list.forEach(function (info) {
+        var key = info.workspace_name + "/" + info.project_name;
+        var iconEl = document.querySelector('[data-hub-prefix="' + CSS.escape(key) + '"]');
+        if (iconEl && info.identifier_prefix) {
+          iconEl.textContent = info.identifier_prefix.slice(0, 4);
+          iconEl.classList.add("hub-prefix-icon");
+        }
+        var badgesEl = document.querySelector('[data-hub-badges="' + CSS.escape(key) + '"]');
+        if (badgesEl) {
+          var isRestricted = info.access_mode === "restricted";
+          badgesEl.innerHTML = '<span class="hub-badge mono ' + (isRestricted ? 'hub-badge-accent' : 'hub-badge-neutral') + '" title="Access Mode">' +
+            (isRestricted ? 'TEAM' : 'OPEN') + '</span>';
+        }
+        var descEl = document.querySelector('[data-hub-desc="' + CSS.escape(key) + '"]');
+        if (descEl && info.description) {
+          descEl.textContent = info.description;
+        }
+        var stripEl = document.querySelector('[data-hub-stats="' + CSS.escape(key) + '"]');
+        if (stripEl) {
+          var done = info.task_done != null ? info.task_done : (info.task_counts ? info.task_counts.done : 0);
+          var total = info.task_total != null ? info.task_total : (info.task_counts ? info.task_counts.total : 0);
+          stripEl.innerHTML =
+            '<span class="hub-mini-stat"><strong>' + done + '/' + total + '</strong> TASKS</span>' +
+            '<span class="hub-mini-stat"><strong>' + (info.member_count || 0) + '</strong> MEMBERS</span>' +
+            '<span class="hub-mini-stat"><strong>' + (info.github_repo_count || 0) + '</strong> REPOS</span>';
+        }
+      });
+    })
+    .catch(function () {});
+})();
+</script>
+
+<details class="section-note section-block mono"><summary>About compiled memory</summary><p>Pages are compiled from captured observations, and synced task boards are stored as Markdown in the project's Git repository for agent retrieval and full commit auditability.</p></details>
 {% endblock %}

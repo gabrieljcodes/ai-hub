@@ -1155,7 +1155,7 @@ pub(crate) struct AdminRequiredView {}
 pub(crate) struct NotFoundView {}
 
 // ---------------------------------------------------------------------------
-// login.html / change_password.html
+// login.html / change_password.html (recompiled)
 // ---------------------------------------------------------------------------
 
 /// View-model for `GET /login` (public builtin auth page).
@@ -1166,6 +1166,16 @@ pub(crate) struct LoginView {
     pub next: String,
     /// Absolute path to the change-password page (for `must_change_password`).
     pub change_password_href: String,
+}
+
+/// View-model for `GET /register` (public builtin registration page).
+#[derive(Template)]
+#[template(path = "register.html")]
+pub(crate) struct RegisterView {
+    /// Sanitised post-registration redirect target.
+    pub next: String,
+    /// Absolute path to the login page.
+    pub login_href: String,
 }
 
 /// View-model for `GET /change-password` (public builtin auth page).

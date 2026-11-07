@@ -195,10 +195,12 @@ impl LoginLimiter {
     }
 }
 
-/// Public login + recovery (no session, no Bearer).
+/// Public login + registration + status + recovery (no session, no Bearer).
 pub fn public_auth_router(state: Arc<AuthState>) -> Router {
     Router::new()
         .route("/auth/login", post(handle_login))
+        .route("/auth/register", post(handle_register))
+        .route("/auth/status", get(handle_auth_status))
         .route("/auth/recovery", post(handle_recovery))
         .with_state(state)
 }
@@ -237,6 +239,27 @@ pub fn internal_auth_router(state: Arc<AuthState>) -> Router {
 struct LoginBody {
     username: String,
     password: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegisterBody {
+    username: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    password: String,
+    #[serde(default)]
+    password_confirmation: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthStatusBody {
+    bootstrap_completed: bool,
+    users_exist: bool,
+    needs_setup: bool,
+    allow_registration: bool,
+    instance_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -788,6 +811,165 @@ async fn handle_recovery(
     resp
 }
 
+async fn handle_auth_status(State(state): State<Arc<AuthState>>) -> Response {
+    let Some(runtime) = state.human.as_ref() else {
+        return Json(AuthStatusBody {
+            bootstrap_completed: false,
+            users_exist: false,
+            needs_setup: false,
+            allow_registration: false,
+            instance_name: "AI Hub".into(),
+        })
+        .into_response();
+    };
+    let bootstrap_completed = runtime.reader.bootstrap_completed().await.unwrap_or(false);
+    let users_exist = runtime.reader.any_password_hash().await.unwrap_or(false);
+    let needs_setup = !users_exist || !bootstrap_completed;
+    let settings = runtime
+        .reader
+        .hub_settings()
+        .await
+        .unwrap_or(ai_memory_store::HubSettings {
+            allow_registration: true,
+            default_project_access: "restricted".into(),
+            instance_name: "AI Hub".into(),
+            updated_at: String::new(),
+        });
+    Json(AuthStatusBody {
+        bootstrap_completed,
+        users_exist,
+        needs_setup,
+        allow_registration: !users_exist || settings.allow_registration,
+        instance_name: settings.instance_name,
+    })
+    .into_response()
+}
+
+async fn handle_register(
+    State(state): State<Arc<AuthState>>,
+    req: Request<axum::body::Body>,
+) -> Response {
+    let Some(runtime) = state.human.as_ref() else {
+        return json_err(StatusCode::UNAUTHORIZED, "human authentication is disabled");
+    };
+    if !declares_json_body(req.headers()) {
+        return unsupported_media_type();
+    }
+    let headers = req.headers().clone();
+    let ip = peer_ip(&headers, req.extensions(), &runtime.trusted_proxy_cidrs);
+    if runtime.limiter.ip_blocked(ip) {
+        return json_err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many authentication attempts",
+        );
+    }
+    let body = match axum::body::to_bytes(req.into_body(), 64 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return json_err(StatusCode::BAD_REQUEST, "invalid body"),
+    };
+    let RegisterBody {
+        username,
+        name,
+        email,
+        password,
+        password_confirmation,
+    } = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return json_err(StatusCode::BAD_REQUEST, "invalid body"),
+    };
+    let username = username.trim().to_string();
+    if username.is_empty() {
+        return json_err(StatusCode::BAD_REQUEST, "username must be non-empty");
+    }
+    if let Some(conf) = password_confirmation.as_deref()
+        && conf != password
+    {
+        return json_err(
+            StatusCode::BAD_REQUEST,
+            "password confirmation does not match",
+        );
+    }
+    if let Err(e) =
+        validate_human_password(&password, Some(username.as_str()), &reserved_refs(runtime))
+    {
+        return json_err(StatusCode::BAD_REQUEST, &e.to_string());
+    }
+    if is_reserved_password(runtime, &password) {
+        return json_err(
+            StatusCode::BAD_REQUEST,
+            "password matches a reserved server credential",
+        );
+    }
+    match password_collides_with_api_key(runtime, state.pepper(), &password).await {
+        Ok(true) => {
+            return json_err(
+                StatusCode::BAD_REQUEST,
+                "password collides with an existing API credential",
+            );
+        }
+        Ok(false) => {}
+        Err(resp) => return resp,
+    }
+    let phc = match ai_memory_store::password::hash_password(password).await {
+        Ok(h) => h,
+        Err(ai_memory_store::StoreError::InvalidState(msg)) if msg.contains("saturated") => {
+            return json_err(StatusCode::TOO_MANY_REQUESTS, "kdf saturated");
+        }
+        Err(e) => return internal_err(e),
+    };
+    let clean_name = name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let clean_email = email
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let mut new_user = ai_memory_core::NewUser {
+        username: username.clone(),
+        name: clean_name,
+        email: clean_email,
+    };
+    if let Err(e) = new_user.validate() {
+        return json_err(StatusCode::BAD_REQUEST, &e.to_string());
+    }
+
+    let (user, _promoted) = match runtime
+        .writer
+        .register_human_user(new_user, phc.clone())
+        .await
+    {
+        Ok(u) => u,
+        Err(ai_memory_store::StoreError::Duplicate(msg)) => {
+            runtime.limiter.record_ip_failure(ip);
+            return json_err(StatusCode::CONFLICT, &msg);
+        }
+        Err(ai_memory_store::StoreError::Forbidden(msg)) => {
+            runtime.limiter.record_ip_failure(ip);
+            return json_err(StatusCode::FORBIDDEN, msg);
+        }
+        Err(ai_memory_store::StoreError::InvalidState(msg)) => {
+            runtime.limiter.record_ip_failure(ip);
+            let status = if msg.contains("already exists") {
+                StatusCode::CONFLICT
+            } else if msg.contains("disabled") || msg.contains("invite") {
+                StatusCode::FORBIDDEN
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            return json_err(status, &msg);
+        }
+        Err(e) => return internal_err(e),
+    };
+
+    let (secret, csrf, expires_at) =
+        match issue_cookies(runtime, user.id, &phc, user.role, user.must_change_password).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
+    let snapshot = me_snapshot(&user);
+    let mut resp = (StatusCode::CREATED, Json(snapshot)).into_response();
+    append_session_cookies(&mut resp, &secret, &csrf, expires_at, state.secure_cookie());
+    resp
+}
+
 async fn handle_me(
     State(state): State<Arc<AuthState>>,
     axum::Extension(level): axum::Extension<AuthLevel>,
@@ -1076,6 +1258,9 @@ pub async fn require_dual_auth(
         return crate::auth::unauthorized_bearer();
     }
     if !human_configured {
+        if state.human.is_some() {
+            return crate::auth::unauthorized_bearer();
+        }
         if !state.enabled() {
             req.extensions_mut().insert(ActorContext::anonymous());
             req.extensions_mut().insert(AuthLevel::Anonymous);
@@ -1495,6 +1680,35 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], b"anonymous");
+    }
+
+    #[tokio::test]
+    async fn dual_auth_rejects_anonymous_when_human_auth_is_enabled_without_users() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = ai_memory_store::Store::open(tmp.path()).unwrap();
+        let runtime = HumanAuthRuntime {
+            reader: store.reader.clone(),
+            writer: store.writer.clone(),
+            recovery_token_hash: None,
+            root_username: "root".into(),
+            root_name: None,
+            root_email: None,
+            reserved_passwords: Vec::new(),
+            trusted_proxy_cidrs: Vec::new(),
+            limiter: Arc::new(LoginLimiter::default()),
+        };
+        let mut auth = AuthState::new(None);
+        auth.human = Some(runtime);
+        let resp = dual_router(Arc::new(auth))
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/probe")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
     async fn json_error(resp: axum::http::Response<axum::body::Body>) -> serde_json::Value {

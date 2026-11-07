@@ -452,6 +452,33 @@ should be proposed from a completed session, or at explicit wrap-up \
   then write each managed skill under the selected skill root. Only \
   replace same-name skill files that contain the ai-memory managed \
   marker unless the human explicitly forces replacement.\n\
+- `hub_task_list` — list and filter Plane-style engineering tasks in the \
+  project by `state` (`backlog`, `todo`, `in_progress`, `in_review`, \
+  `done`, `cancelled`), `priority` (`urgent`, `high`, `medium`, `low`, \
+  `none`), `assignee`, `module_id`, `cycle_id`, `label`, or `search`.\n\
+- `hub_task_get` — read full details for a single task by UUID or sequence \
+  key (such as `AIH-1`), including subtasks, comments, activity log, \
+  linked wiki pages, and linked GitHub issues/PRs, or export/commit the \
+  entire project task board to Markdown (`action: \"export_markdown\"` or \
+  `\"commit_board_to_wiki\"`).\n\
+- `hub_task_create` — create a new task or subtask with `title`, \
+  `description`, `state`, `priority`, `assignees`, `module_id`, \
+  `cycle_id`, `start_date`, `due_date`, `estimate_points`, `labels`, \
+  `wiki_links`, and `created_by_agent`.\n\
+- `hub_task_update` — update any fields on an existing task (`title`, \
+  `description`, `state`, `priority`, `assignees`, `module_id`, \
+  `cycle_id`, `start_date`, `due_date`, `estimate_points`, `labels`, \
+  `wiki_links`, `archived`) and record an activity log entry.\n\
+- `hub_task_comment` — add a Markdown comment to a task.\n\
+- `hub_module_manage` — list or create project modules, cycles/sprints, \
+  and task labels.\n\
+- `hub_project_team` — inspect or update a project's team members and \
+  roles (`owner`, `admin`, `write`, `read`), access mode (`restricted` \
+  or `open`), and task key prefix.\n\
+- `hub_github_manage` — list or attach GitHub repositories (`owner/repo`) \
+  on a project, sync Issues and PRs from GitHub, list synced issues/PRs, \
+  create GitHub issues, comment on GitHub issues/PRs, import an issue/PR \
+  as a task, or link a task to a GitHub issue/PR.\n\
 \n\
 **When the current project comes up empty, broaden — don't stop.** \
 `memory_query` searches only ONE project (the current one) by default. \
@@ -1230,6 +1257,7 @@ fn tool_call_is_write(tool: &str) -> bool {
             | "memory_handoff_list"
             | "memory_message_list"
             | "memory_install_self_routing"
+            | "hub_task_list"
     )
 }
 
@@ -7276,6 +7304,1563 @@ impl AiMemoryServer {
         });
         ok_json(&response)
     }
+
+    /// List and filter Plane-style engineering tasks in the project.
+    #[tool(
+        annotations(
+            title = "List project tasks",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        ),
+        description = "List and filter Plane-style engineering tasks in the project by `state` \
+        (`backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled`), `priority` \
+        (`urgent`, `high`, `medium`, `low`, `none`), `assignee`, `module_id`, `cycle_id`, \
+        `label`, or `search`. Returns task metadata, assignees, labels, wiki links, and \
+        GitHub issue/PR links."
+    )]
+    async fn hub_task_list(
+        &self,
+        Parameters(args): Parameters<HubTaskListArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let ((ws, proj), source) = self
+            .traced_ids_for_read_args(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                Self::viewer_from_parts(Some(&parts)),
+            )
+            .await?;
+        let filter = ai_memory_store::HubTaskFilter {
+            state: args.state,
+            priority: args.priority,
+            assignee_id: None,
+            assignee_username: args.assignee,
+            module_id: args.module_id,
+            cycle_id: args.cycle_id,
+            label: args.label,
+            search: args.search,
+            include_archived: args.include_archived.unwrap_or(false),
+        };
+        let tasks = self
+            .reader
+            .list_project_tasks(proj, filter)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let (workspace, project) = self.scope_names(ws, proj).await;
+        ok_json(&serde_json::json!({
+            "tasks": tasks,
+            "count": tasks.len(),
+            "scope": AnsweredScope {
+                workspace,
+                project,
+                resolved_by: source.as_str(),
+            },
+        }))
+    }
+
+    /// Read full details of a single task by UUID or sequence key (e.g. `AIH-1`),
+    /// or export/commit the project task board to Markdown.
+    #[tool(
+        annotations(
+            title = "Get task detail or board Markdown",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        ),
+        description = "Read full details for a single task by UUID or sequence key (such as \
+        `AIH-1`), including its Markdown description, subtasks, comments, activity log, \
+        linked wiki pages, and linked GitHub issues/PRs. Alternatively, pass \
+        `action: \"export_markdown\"` to render the entire project task board as Markdown, \
+        or `action: \"commit_board_to_wiki\"` to write and Git-commit the board snapshot \
+        to `_hub/board.md` in the project wiki."
+    )]
+    async fn hub_task_get(
+        &self,
+        Parameters(args): Parameters<HubTaskGetArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let action = args.action.as_deref().unwrap_or("get").trim();
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        if action.eq_ignore_ascii_case("export_markdown")
+            || action.eq_ignore_ascii_case("commit_board_to_wiki")
+        {
+            let (ws, proj) = if action.eq_ignore_ascii_case("commit_board_to_wiki") {
+                self.effective_ids_for_mutation_args_with_actor(
+                    args.workspace.as_deref(),
+                    args.project.as_deref(),
+                    &aps_actor,
+                    viewer,
+                )
+                .await?
+            } else {
+                self.effective_ids_for_read_args_with_actor(
+                    args.workspace.as_deref(),
+                    args.project.as_deref(),
+                    &aps_actor,
+                    viewer,
+                )
+                .await?
+            };
+            let (workspace, project) = self.scope_names(ws, proj).await;
+            let tasks = self
+                .reader
+                .list_project_tasks(proj, ai_memory_store::HubTaskFilter::default())
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            let modules = self
+                .reader
+                .list_modules(proj)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            let md = render_hub_board_markdown(&workspace, &project, &tasks, &modules);
+            if action.eq_ignore_ascii_case("commit_board_to_wiki") {
+                let Some(wiki) = self.wiki.as_ref() else {
+                    return Err(McpError::internal_error(
+                        "wiki handle is not configured on this server".to_string(),
+                        None,
+                    ));
+                };
+                let page_path = PagePath::new("_hub/board.md")
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                let actor_ctx = crate::actor::actor_from_parts(&parts);
+                let page_id = wiki
+                    .write_page(WritePageRequest {
+                        workspace_id: ws,
+                        project_id: proj,
+                        path: page_path,
+                        frontmatter: serde_json::json!({
+                            "kind": "fact",
+                            "title": format!("{project} Task Board"),
+                        }),
+                        body: md.clone(),
+                        tier: Tier::Semantic,
+                        pinned: false,
+                        title: Some(format!("{project} Task Board")),
+                        admission_ctx: None,
+                        author_id: viewer,
+                        actor: actor_ctx,
+                        evidence: Vec::new(),
+                    })
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                return ok_json(&serde_json::json!({
+                    "committed": true,
+                    "path": "_hub/board.md",
+                    "page_id": page_id.to_string(),
+                    "markdown": md,
+                }));
+            }
+            return ok_json(&serde_json::json!({
+                "markdown": md,
+                "task_count": tasks.len(),
+            }));
+        }
+
+        let Some(task_ref) = args
+            .task_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            return Err(McpError::invalid_params(
+                "task_id is required when action is 'get'".to_string(),
+                None,
+            ));
+        };
+        let (_ws, proj) = self
+            .effective_ids_for_read_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?;
+        let detail = self
+            .reader
+            .get_task_detail(proj, task_ref.to_string())
+            .await
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+        ok_json(&detail)
+    }
+
+    /// Create a new Plane-style task or subtask in the project.
+    #[tool(
+        annotations(
+            title = "Create project task",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        ),
+        description = "Create a new Plane-style task (or subtask via `parent_task_id`) in the \
+        project with `title`, `description`, `state`, `priority`, `assignees` (usernames), \
+        `module_id`, `cycle_id`, `start_date` (`YYYY-MM-DD`), `due_date` (`YYYY-MM-DD`), \
+        `estimate_points`, `labels`, `wiki_links`, and `created_by_agent`."
+    )]
+    async fn hub_task_create(
+        &self,
+        Parameters(args): Parameters<HubTaskCreateArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        let resolved = self
+            .resolve_write_target_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?;
+        let (ws, proj) = resolved.scope.as_tuple();
+        let detail = self
+            .writer
+            .create_task(
+                ws,
+                proj,
+                ai_memory_store::NewHubTask {
+                    title: args.title,
+                    description: args.description,
+                    state: args.state,
+                    priority: args.priority,
+                    module_id: args.module_id,
+                    cycle_id: args.cycle_id,
+                    parent_task_id: args.parent_task_id,
+                    created_by: viewer,
+                    created_by_agent: args
+                        .created_by_agent
+                        .or_else(|| Some("mcp-agent".to_string())),
+                    start_date: args.start_date,
+                    due_date: args.due_date,
+                    estimate_points: args.estimate_points,
+                    assignees: args.assignees.unwrap_or_default(),
+                    labels: args.labels.unwrap_or_default(),
+                    wiki_pages: args.wiki_links.unwrap_or_default(),
+                    github_links: Vec::new(),
+                },
+            )
+            .await
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+        ok_json(&detail)
+    }
+
+    /// Update an existing task in the project.
+    #[tool(
+        annotations(
+            title = "Update project task",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        ),
+        description = "Update any fields on an existing task (`title`, `description`, `state`, \
+        `priority`, `assignees`, `module_id`, `cycle_id`, `start_date`, `due_date`, \
+        `estimate_points`, `labels`, `wiki_links`, or `delete: true`) by UUID or sequence key \
+        (e.g. `AIH-1`) and record an activity log entry."
+    )]
+    async fn hub_task_update(
+        &self,
+        Parameters(args): Parameters<HubTaskUpdateArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        let (_ws, proj) = self
+            .effective_ids_for_mutation_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?;
+        if args.delete.unwrap_or(false) {
+            let deleted = self
+                .writer
+                .delete_task(proj, args.task_id)
+                .await
+                .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+            return ok_json(&serde_json::json!({ "deleted": deleted }));
+        }
+        let detail = self
+            .writer
+            .update_task(
+                proj,
+                args.task_id,
+                ai_memory_store::UpdateHubTask {
+                    title: args.title,
+                    description: args.description,
+                    state: args.state,
+                    priority: args.priority,
+                    module_id: args.module_id,
+                    cycle_id: args.cycle_id,
+                    parent_task_id: args.parent_task_id,
+                    start_date: args.start_date,
+                    due_date: args.due_date,
+                    estimate_points: args.estimate_points,
+                    sort_order: None,
+                    assignees: args.assignees,
+                    labels: args.labels,
+                    wiki_pages: args.wiki_links,
+                    github_links: None,
+                    actor_id: viewer,
+                    actor_agent: args.actor_agent.or_else(|| Some("mcp-agent".to_string())),
+                },
+            )
+            .await
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+        ok_json(&detail)
+    }
+
+    /// Add a Markdown comment to a project task.
+    #[tool(
+        annotations(
+            title = "Comment on project task",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        ),
+        description = "Add a Markdown comment to a project task by UUID or sequence key (such \
+        as `AIH-1`), attributed to the current user and/or AI agent harness."
+    )]
+    async fn hub_task_comment(
+        &self,
+        Parameters(args): Parameters<HubTaskCommentArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        let (_ws, proj) = self
+            .effective_ids_for_mutation_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?;
+        let comment = self
+            .writer
+            .add_task_comment(
+                proj,
+                args.task_id,
+                viewer,
+                args.author_agent.or_else(|| Some("mcp-agent".to_string())),
+                args.body,
+            )
+            .await
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+        ok_json(&comment)
+    }
+
+    /// List or manage Plane-style Modules, Cycles/Sprints, and Labels in a project.
+    #[tool(
+        annotations(
+            title = "Manage modules, cycles, and labels",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        ),
+        description = "List or create project modules (`action: \"list_modules\"`, \
+        `\"create_module\"`, `\"update_module\"`, `\"delete_module\"`), cycles/sprints \
+        (`\"list_cycles\"`, `\"create_cycle\"`, `\"update_cycle\"`, `\"delete_cycle\"`), \
+        and project task labels (`\"list_labels\"`, `\"create_label\"`, `\"delete_label\"`)."
+    )]
+    async fn hub_module_manage(
+        &self,
+        Parameters(args): Parameters<HubModuleManageArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        let action = args.action.trim();
+        let is_read = matches!(action, "list_modules" | "list_cycles" | "list_labels");
+        let (ws, proj) = if is_read {
+            self.effective_ids_for_read_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?
+        } else {
+            self.effective_ids_for_mutation_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?
+        };
+        match action {
+            "list_modules" => {
+                let modules = self
+                    .reader
+                    .list_modules(proj)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "modules": modules }))
+            }
+            "create_module" => {
+                let name = args.name.ok_or_else(|| {
+                    McpError::invalid_params("name is required for create_module".to_string(), None)
+                })?;
+                let module = self
+                    .writer
+                    .create_module(
+                        ws,
+                        proj,
+                        ai_memory_store::NewHubModule {
+                            name,
+                            description: args.description,
+                            status: args.status,
+                            lead_username: args.lead_username,
+                            start_date: args.start_date,
+                            target_date: args.target_date,
+                            created_by: viewer,
+                        },
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&module)
+            }
+            "update_module" => {
+                let id = args.id.or(args.name.clone()).ok_or_else(|| {
+                    McpError::invalid_params("id is required for update_module".to_string(), None)
+                })?;
+                let module = self
+                    .writer
+                    .update_module(
+                        proj,
+                        id,
+                        ai_memory_store::UpdateHubModule {
+                            name: args.name,
+                            description: args.description,
+                            status: args.status,
+                            lead_username: args.lead_username,
+                            start_date: args.start_date,
+                            target_date: args.target_date,
+                        },
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&module)
+            }
+            "delete_module" => {
+                let id = args.id.or(args.name).ok_or_else(|| {
+                    McpError::invalid_params("id is required for delete_module".to_string(), None)
+                })?;
+                let deleted = self
+                    .writer
+                    .delete_module(proj, id)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "deleted": deleted }))
+            }
+            "list_cycles" => {
+                let cycles = self
+                    .reader
+                    .list_cycles(proj)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "cycles": cycles }))
+            }
+            "create_cycle" => {
+                let name = args.name.ok_or_else(|| {
+                    McpError::invalid_params("name is required for create_cycle".to_string(), None)
+                })?;
+                let cycle = self
+                    .writer
+                    .create_cycle(
+                        ws,
+                        proj,
+                        ai_memory_store::NewHubCycle {
+                            name,
+                            description: args.description,
+                            status: args.status,
+                            start_date: args.start_date,
+                            end_date: args.target_date,
+                            created_by: viewer,
+                        },
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&cycle)
+            }
+            "update_cycle" => {
+                let id = args.id.or(args.name.clone()).ok_or_else(|| {
+                    McpError::invalid_params("id is required for update_cycle".to_string(), None)
+                })?;
+                let cycle = self
+                    .writer
+                    .update_cycle(
+                        proj,
+                        id,
+                        ai_memory_store::UpdateHubCycle {
+                            name: args.name,
+                            description: args.description,
+                            status: args.status,
+                            start_date: args.start_date,
+                            end_date: args.target_date,
+                        },
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&cycle)
+            }
+            "delete_cycle" => {
+                let id = args.id.or(args.name).ok_or_else(|| {
+                    McpError::invalid_params("id is required for delete_cycle".to_string(), None)
+                })?;
+                let deleted = self
+                    .writer
+                    .delete_cycle(proj, id)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "deleted": deleted }))
+            }
+            "list_labels" => {
+                let labels = self
+                    .reader
+                    .list_labels(proj)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "labels": labels }))
+            }
+            "create_label" => {
+                let name = args.name.ok_or_else(|| {
+                    McpError::invalid_params("name is required for create_label".to_string(), None)
+                })?;
+                let color = args.color.unwrap_or_else(|| "#6366f1".to_string());
+                let desc = args.description.unwrap_or_default();
+                let label = self
+                    .writer
+                    .create_label(proj, name, color, desc)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&label)
+            }
+            "delete_label" => {
+                let id = args.id.or(args.name).ok_or_else(|| {
+                    McpError::invalid_params(
+                        "id or name is required for delete_label".to_string(),
+                        None,
+                    )
+                })?;
+                let deleted = self
+                    .writer
+                    .delete_label(proj, id)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "deleted": deleted }))
+            }
+            other => Err(McpError::invalid_params(
+                format!(
+                    "unknown action '{other}'; expected list_modules, create_module, update_module, delete_module, list_cycles, create_cycle, update_cycle, delete_cycle, list_labels, create_label, or delete_label"
+                ),
+                None,
+            )),
+        }
+    }
+
+    /// Inspect or update a project's team members, roles, access mode, and prefix.
+    #[tool(
+        annotations(
+            title = "Manage project team and access",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        ),
+        description = "Inspect or update a project's team members and roles (`owner`, `admin`, \
+        `write`, `read`), access mode (`restricted` or `open`), description, and task key \
+        prefix (`action: \"list_members\"`, `\"add_member\"`, `\"remove_member\"`, or \
+        `\"update_project\"`)."
+    )]
+    async fn hub_project_team(
+        &self,
+        Parameters(args): Parameters<HubProjectTeamArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        let action = args.action.as_deref().unwrap_or("list_members").trim();
+        let is_read = action == "list_members";
+        let (ws, proj) = if is_read {
+            self.effective_ids_for_read_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?
+        } else {
+            self.effective_ids_for_mutation_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?
+        };
+        let (ws_name, proj_name) = self.scope_names(ws, proj).await;
+        match action {
+            "list_members" => {
+                let members = self
+                    .reader
+                    .list_project_members(proj)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                let overview = self
+                    .reader
+                    .get_hub_project(ws_name, proj_name, viewer, true)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&serde_json::json!({
+                    "project": overview,
+                    "members": members,
+                }))
+            }
+            "add_member" | "set_role" => {
+                let username = args.username.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "username is required for add_member".to_string(),
+                        None,
+                    )
+                })?;
+                let role = args.role.unwrap_or_else(|| "write".to_string());
+                let member = self
+                    .writer
+                    .set_project_member_role(proj, username, role, viewer)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&member)
+            }
+            "remove_member" => {
+                let username = args.username.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "username is required for remove_member".to_string(),
+                        None,
+                    )
+                })?;
+                let removed = self
+                    .writer
+                    .remove_project_member(proj, username, viewer)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "removed": removed }))
+            }
+            "update_project" => {
+                let mode = match args.access_mode.as_deref() {
+                    Some("open") => Some(ai_memory_store::AccessMode::Open),
+                    Some("restricted") => Some(ai_memory_store::AccessMode::Restricted),
+                    Some(other) => {
+                        return Err(McpError::invalid_params(
+                            format!(
+                                "invalid access_mode '{other}'; expected 'restricted' or 'open'"
+                            ),
+                            None,
+                        ));
+                    }
+                    None => None,
+                };
+                self.writer
+                    .update_hub_project(proj, args.description, args.identifier_prefix, mode)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                let overview = self
+                    .reader
+                    .get_hub_project(ws_name, proj_name, viewer, true)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&overview)
+            }
+            other => Err(McpError::invalid_params(
+                format!(
+                    "unknown action '{other}'; expected list_members, add_member, remove_member, or update_project"
+                ),
+                None,
+            )),
+        }
+    }
+
+    /// Manage GitHub repositories, issues, and PRs attached to the project.
+    #[tool(
+        annotations(
+            title = "Manage GitHub repos, issues, and PRs",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
+        description = "List or attach GitHub repositories (`owner/repo`) on a project, sync \
+        Issues and Pull Requests from GitHub's REST API, list synced issues/PRs, create \
+        GitHub issues, comment on GitHub issues/PRs, import an issue/PR as a project task, \
+        or link a task to a GitHub issue/PR (`action: \"list_repos\"`, `\"add_repo\"`, \
+        `\"remove_repo\"`, `\"sync_repo\"`, `\"list_items\"`, `\"link_task\"`, \
+        `\"import_as_task\"`, `\"create_issue\"`, or `\"comment_issue\"`)."
+    )]
+    async fn hub_github_manage(
+        &self,
+        Parameters(args): Parameters<HubGithubManageArgs>,
+        OptionalParts(parts): OptionalParts,
+    ) -> Result<CallToolResult, McpError> {
+        let aps_actor = Self::actor_key_from_parts(Some(&parts));
+        let viewer = Self::viewer_from_parts(Some(&parts));
+        let action = args.action.as_deref().unwrap_or("list_items").trim();
+        let is_read = matches!(action, "list_repos" | "list_items");
+        let (ws, proj) = if is_read {
+            self.effective_ids_for_read_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?
+        } else {
+            self.effective_ids_for_mutation_args_with_actor(
+                args.workspace.as_deref(),
+                args.project.as_deref(),
+                &aps_actor,
+                viewer,
+            )
+            .await?
+        };
+        match action {
+            "list_repos" => {
+                let repos = self
+                    .reader
+                    .list_github_repos(proj)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "repos": repos }))
+            }
+            "add_repo" => {
+                let repo_full_name = args.repo_full_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "repo_full_name ('owner/repo') is required".to_string(),
+                        None,
+                    )
+                })?;
+                let repo = self
+                    .writer
+                    .add_github_repo(
+                        ws,
+                        proj,
+                        repo_full_name,
+                        args.default_branch,
+                        args.access_token,
+                        viewer,
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&repo)
+            }
+            "remove_repo" => {
+                let repo_ref = args.repo_full_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "repo_full_name is required for remove_repo".to_string(),
+                        None,
+                    )
+                })?;
+                let removed = self
+                    .writer
+                    .remove_github_repo(proj, repo_ref)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&serde_json::json!({ "removed": removed }))
+            }
+            "list_items" => {
+                let items = self
+                    .reader
+                    .list_github_items(
+                        proj,
+                        args.repo_full_name,
+                        args.kind,
+                        args.state,
+                        args.search,
+                    )
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                ok_json(&serde_json::json!({
+                    "items": items,
+                    "count": items.len(),
+                }))
+            }
+            "sync_repo" => {
+                let repos = if let Some(r) = args.repo_full_name {
+                    vec![
+                        self.reader
+                            .get_github_repo_with_token(proj, r)
+                            .await
+                            .map_err(|e| McpError::invalid_params(e.to_string(), None))?,
+                    ]
+                } else {
+                    let list = self
+                        .reader
+                        .list_github_repos(proj)
+                        .await
+                        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                    let mut out = Vec::new();
+                    for item in list {
+                        if let Ok(rt) = self.reader.get_github_repo_with_token(proj, item.id).await
+                        {
+                            out.push(rt);
+                        }
+                    }
+                    out
+                };
+                let mut total_synced = 0usize;
+                let mut errors = Vec::new();
+                for rt in repos {
+                    match fetch_github_items_mcp(&rt.repo.full_name, rt.access_token.as_deref())
+                        .await
+                    {
+                        Ok(items) => {
+                            let n = self
+                                .writer
+                                .record_github_sync_result(
+                                    rt.repo.id,
+                                    proj,
+                                    rt.repo.full_name,
+                                    items,
+                                    None,
+                                )
+                                .await
+                                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                            total_synced += n;
+                        }
+                        Err(err) => {
+                            let _ = self
+                                .writer
+                                .record_github_sync_result(
+                                    rt.repo.id,
+                                    proj,
+                                    rt.repo.full_name.clone(),
+                                    Vec::new(),
+                                    Some(err.clone()),
+                                )
+                                .await;
+                            errors.push(format!("{}: {err}", rt.repo.full_name));
+                        }
+                    }
+                }
+                ok_json(&serde_json::json!({
+                    "synced_items": total_synced,
+                    "errors": errors,
+                }))
+            }
+            "link_task" => {
+                let task_id = args.task_id.ok_or_else(|| {
+                    McpError::invalid_params("task_id is required for link_task".to_string(), None)
+                })?;
+                let repo_full_name = args.repo_full_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "repo_full_name is required for link_task".to_string(),
+                        None,
+                    )
+                })?;
+                let number = args.number.ok_or_else(|| {
+                    McpError::invalid_params("number is required for link_task".to_string(), None)
+                })?;
+                let detail = self
+                    .writer
+                    .link_task_github(
+                        proj,
+                        task_id,
+                        ai_memory_store::NewTaskGithubLink {
+                            repo_full_name,
+                            kind: args.kind.unwrap_or_else(|| "issue".to_string()),
+                            number,
+                            title: args.title,
+                            state: args.state,
+                            html_url: None,
+                            relation: args.relation,
+                        },
+                        viewer,
+                        Some("mcp-agent".to_string()),
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&detail)
+            }
+            "import_as_task" => {
+                let repo_full_name = args.repo_full_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "repo_full_name is required for import_as_task".to_string(),
+                        None,
+                    )
+                })?;
+                let number = args.number.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "number is required for import_as_task".to_string(),
+                        None,
+                    )
+                })?;
+                let items = self
+                    .reader
+                    .list_github_items(proj, Some(repo_full_name.clone()), None, None, None)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                let found = items.into_iter().find(|i| i.number == number);
+                let (title, body, kind, state, html_url) = if let Some(item) = found {
+                    (
+                        args.title.unwrap_or(item.title),
+                        args.body.unwrap_or(item.body),
+                        item.kind,
+                        item.state,
+                        Some(item.html_url),
+                    )
+                } else {
+                    (
+                        args.title
+                            .unwrap_or_else(|| format!("{repo_full_name}#{number}")),
+                        args.body.unwrap_or_default(),
+                        args.kind.unwrap_or_else(|| "issue".to_string()),
+                        args.state.unwrap_or_else(|| "open".to_string()),
+                        None,
+                    )
+                };
+                let detail = self
+                    .writer
+                    .create_task(
+                        ws,
+                        proj,
+                        ai_memory_store::NewHubTask {
+                            title,
+                            description: Some(body),
+                            state: Some("todo".to_string()),
+                            priority: Some("medium".to_string()),
+                            created_by: viewer,
+                            created_by_agent: Some("mcp-agent".to_string()),
+                            github_links: vec![ai_memory_store::NewTaskGithubLink {
+                                repo_full_name,
+                                kind,
+                                number,
+                                title: None,
+                                state: Some(state),
+                                html_url,
+                                relation: Some("tracks".to_string()),
+                            }],
+                            ..ai_memory_store::NewHubTask::default()
+                        },
+                    )
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                ok_json(&detail)
+            }
+            "create_issue" => {
+                let repo_full_name = args.repo_full_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "repo_full_name is required for create_issue".to_string(),
+                        None,
+                    )
+                })?;
+                let title = args.title.ok_or_else(|| {
+                    McpError::invalid_params("title is required for create_issue".to_string(), None)
+                })?;
+                let rt = self
+                    .reader
+                    .get_github_repo_with_token(proj, repo_full_name)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                let Some(token) = rt.access_token.as_deref() else {
+                    return Err(McpError::invalid_params(
+                        "GitHub repository does not have a Personal Access Token configured"
+                            .to_string(),
+                        None,
+                    ));
+                };
+                let created = create_github_issue_mcp(
+                    &rt.repo.full_name,
+                    token,
+                    &title,
+                    args.body.as_deref().unwrap_or(""),
+                )
+                .await
+                .map_err(|e| McpError::internal_error(e, None))?;
+                let _ = self
+                    .writer
+                    .record_github_sync_result(
+                        rt.repo.id,
+                        proj,
+                        rt.repo.full_name,
+                        vec![created.clone()],
+                        None,
+                    )
+                    .await;
+                ok_json(&created)
+            }
+            "comment_issue" => {
+                let repo_full_name = args.repo_full_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "repo_full_name is required for comment_issue".to_string(),
+                        None,
+                    )
+                })?;
+                let number = args.number.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "number is required for comment_issue".to_string(),
+                        None,
+                    )
+                })?;
+                let body = args.body.ok_or_else(|| {
+                    McpError::invalid_params("body is required for comment_issue".to_string(), None)
+                })?;
+                let rt = self
+                    .reader
+                    .get_github_repo_with_token(proj, repo_full_name)
+                    .await
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                let Some(token) = rt.access_token.as_deref() else {
+                    return Err(McpError::invalid_params(
+                        "GitHub repository does not have a Personal Access Token configured"
+                            .to_string(),
+                        None,
+                    ));
+                };
+                let resp = comment_github_issue_mcp(&rt.repo.full_name, token, number, &body)
+                    .await
+                    .map_err(|e| McpError::internal_error(e, None))?;
+                ok_json(&resp)
+            }
+            other => Err(McpError::invalid_params(
+                format!(
+                    "unknown action '{other}'; expected list_repos, add_repo, remove_repo, sync_repo, list_items, link_task, import_as_task, create_issue, or comment_issue"
+                ),
+                None,
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubTaskListArgs {
+    /// Filter by task state (`backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled`).
+    #[serde(default)]
+    state: Option<String>,
+    /// Filter by task priority (`urgent`, `high`, `medium`, `low`, `none`).
+    #[serde(default)]
+    priority: Option<String>,
+    /// Filter by assignee username.
+    #[serde(default)]
+    assignee: Option<String>,
+    /// Filter by module UUID or name.
+    #[serde(default)]
+    module_id: Option<String>,
+    /// Filter by cycle/sprint UUID or name.
+    #[serde(default)]
+    cycle_id: Option<String>,
+    /// Filter by label name or UUID.
+    #[serde(default)]
+    label: Option<String>,
+    /// Search query across task title, description, or sequence key (`AIH-1`).
+    #[serde(default)]
+    search: Option<String>,
+    /// Include archived tasks when `true`.
+    #[serde(default)]
+    include_archived: Option<bool>,
+    /// Project whose tasks to list. Session-aware clients may omit it for the current
+    /// project. Static MCP clients must pass it together with `workspace` for every
+    /// project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubTaskGetArgs {
+    /// Task UUID or sequence key (e.g. `AIH-1`). Required when `action` is omitted or `"get"`.
+    #[serde(default)]
+    task_id: Option<String>,
+    /// `"get"` (default), `"export_markdown"`, or `"commit_board_to_wiki"`.
+    #[serde(default)]
+    action: Option<String>,
+    /// Project containing the task. Session-aware clients may omit it for the current
+    /// project. Static MCP clients must pass it together with `workspace` for every
+    /// project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubTaskCreateArgs {
+    /// Task title.
+    title: String,
+    /// Markdown description of the task.
+    #[serde(default)]
+    description: Option<String>,
+    /// Initial state (`backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled`).
+    #[serde(default)]
+    state: Option<String>,
+    /// Priority (`urgent`, `high`, `medium`, `low`, `none`).
+    #[serde(default)]
+    priority: Option<String>,
+    /// Module UUID or name.
+    #[serde(default)]
+    module_id: Option<String>,
+    /// Cycle/Sprint UUID or name.
+    #[serde(default)]
+    cycle_id: Option<String>,
+    /// Parent task UUID or sequence key (`AIH-1`) when creating a subtask.
+    #[serde(default)]
+    parent_task_id: Option<String>,
+    /// Start date (`YYYY-MM-DD`).
+    #[serde(default)]
+    start_date: Option<String>,
+    /// Due date (`YYYY-MM-DD`).
+    #[serde(default)]
+    due_date: Option<String>,
+    /// Effort estimate points.
+    #[serde(default)]
+    estimate_points: Option<i64>,
+    /// Usernames of assignees.
+    #[serde(default)]
+    assignees: Option<Vec<String>>,
+    /// Label names or IDs to attach.
+    #[serde(default)]
+    labels: Option<Vec<String>>,
+    /// Wiki page paths (e.g. `decisions/auth.md`) linked to this task.
+    #[serde(default)]
+    wiki_links: Option<Vec<String>>,
+    /// Optional AI agent harness identifier (e.g. `claude-code`, `codex`, `cursor`).
+    #[serde(default)]
+    created_by_agent: Option<String>,
+    /// Project to create the task in. Session-aware clients may omit it for the current
+    /// project. Static MCP clients must pass it together with `workspace` for every
+    /// project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubTaskUpdateArgs {
+    /// Task UUID or sequence key (e.g. `AIH-1`) to update.
+    task_id: String,
+    /// Updated title.
+    #[serde(default)]
+    title: Option<String>,
+    /// Updated Markdown description.
+    #[serde(default)]
+    description: Option<String>,
+    /// Updated state (`backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled`).
+    #[serde(default)]
+    state: Option<String>,
+    /// Updated priority (`urgent`, `high`, `medium`, `low`, `none`).
+    #[serde(default)]
+    priority: Option<String>,
+    /// Updated module UUID or name (empty string clears).
+    #[serde(default)]
+    module_id: Option<String>,
+    /// Updated cycle UUID or name (empty string clears).
+    #[serde(default)]
+    cycle_id: Option<String>,
+    /// Updated parent task UUID or key (empty string clears).
+    #[serde(default)]
+    parent_task_id: Option<String>,
+    /// Updated start date (`YYYY-MM-DD`, empty string clears).
+    #[serde(default)]
+    start_date: Option<String>,
+    /// Updated due date (`YYYY-MM-DD`, empty string clears).
+    #[serde(default)]
+    due_date: Option<String>,
+    /// Updated estimate points (`-1` clears).
+    #[serde(default)]
+    estimate_points: Option<i64>,
+    /// Replace assignees with these usernames when provided.
+    #[serde(default)]
+    assignees: Option<Vec<String>>,
+    /// Replace labels with these label names/IDs when provided.
+    #[serde(default)]
+    labels: Option<Vec<String>>,
+    /// Replace linked wiki page paths when provided.
+    #[serde(default)]
+    wiki_links: Option<Vec<String>>,
+    /// Set `true` to delete the task.
+    #[serde(default)]
+    delete: Option<bool>,
+    /// Optional AI agent harness identifier performing the update.
+    #[serde(default)]
+    actor_agent: Option<String>,
+    /// Project containing the task. Session-aware clients may omit it for the current
+    /// project. Static MCP clients must pass it together with `workspace` for every
+    /// project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubTaskCommentArgs {
+    /// Task UUID or sequence key (e.g. `AIH-1`) to comment on.
+    task_id: String,
+    /// Markdown comment body.
+    body: String,
+    /// Optional AI agent harness identifier (e.g. `claude-code`, `codex`).
+    #[serde(default)]
+    author_agent: Option<String>,
+    /// Project containing the task. Session-aware clients may omit it for the current
+    /// project. Static MCP clients must pass it together with `workspace` for every
+    /// project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubModuleManageArgs {
+    /// Action: `"list_modules"`, `"create_module"`, `"update_module"`, `"delete_module"`,
+    /// `"list_cycles"`, `"create_cycle"`, `"update_cycle"`, `"delete_cycle"`,
+    /// `"list_labels"`, `"create_label"`, or `"delete_label"`.
+    action: String,
+    /// Module, cycle, or label ID (for update/delete).
+    #[serde(default)]
+    id: Option<String>,
+    /// Module, cycle, or label name.
+    #[serde(default)]
+    name: Option<String>,
+    /// Description.
+    #[serde(default)]
+    description: Option<String>,
+    /// Status (for modules: `backlog`, `planned`, `in_progress`, `paused`, `completed`, `cancelled`;
+    /// for cycles: `upcoming`, `active`, `completed`, `archived`).
+    #[serde(default)]
+    status: Option<String>,
+    /// Module lead username.
+    #[serde(default)]
+    lead_username: Option<String>,
+    /// Start date (`YYYY-MM-DD`).
+    #[serde(default)]
+    start_date: Option<String>,
+    /// Target/end date (`YYYY-MM-DD`).
+    #[serde(default)]
+    target_date: Option<String>,
+    /// Hex color for labels (e.g. `#6366f1`).
+    #[serde(default)]
+    color: Option<String>,
+    /// Project to manage modules/cycles/labels in. Session-aware clients may omit it for
+    /// the current project. Static MCP clients must pass it together with `workspace` for
+    /// every project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubProjectTeamArgs {
+    /// Action: `"list_members"` (default), `"add_member"`, `"remove_member"`, or `"update_project"`.
+    #[serde(default)]
+    action: Option<String>,
+    /// Username to grant or revoke on the project.
+    #[serde(default)]
+    username: Option<String>,
+    /// Role to grant (`read`, `write`, `admin`).
+    #[serde(default)]
+    role: Option<String>,
+    /// Updated project description (`action: "update_project"`).
+    #[serde(default)]
+    description: Option<String>,
+    /// Updated task key prefix, e.g. `AIH` (`action: "update_project"`).
+    #[serde(default)]
+    identifier_prefix: Option<String>,
+    /// Updated project access mode: `restricted` or `open` (`action: "update_project"`).
+    #[serde(default)]
+    access_mode: Option<String>,
+    /// Project whose team or settings to manage. Session-aware clients may omit it for
+    /// the current project. Static MCP clients must pass it together with `workspace` for
+    /// every project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+struct HubGithubManageArgs {
+    /// Action: `"list_repos"`, `"add_repo"`, `"remove_repo"`, `"sync_repo"`, `"list_items"`,
+    /// `"link_task"`, `"import_as_task"`, `"create_issue"`, or `"comment_issue"`.
+    #[serde(default)]
+    action: Option<String>,
+    /// GitHub repository full name (`owner/repo`) or ID.
+    #[serde(default)]
+    repo_full_name: Option<String>,
+    /// Optional default branch when adding a repo.
+    #[serde(default)]
+    default_branch: Option<String>,
+    /// Optional GitHub Personal Access Token when adding a repo.
+    #[serde(default)]
+    access_token: Option<String>,
+    /// Filter or specify item kind (`issue` or `pr`).
+    #[serde(default)]
+    kind: Option<String>,
+    /// Filter or specify item state (`open`, `closed`, `merged`).
+    #[serde(default)]
+    state: Option<String>,
+    /// Search query over synced GitHub issues/PRs.
+    #[serde(default)]
+    search: Option<String>,
+    /// Issue or PR number (e.g. `42`).
+    #[serde(default)]
+    number: Option<i64>,
+    /// Task ID or key (`AIH-1`) when linking a task to a GitHub issue/PR.
+    #[serde(default)]
+    task_id: Option<String>,
+    /// Relation when linking (`tracks`, `fixes`, `closes`, `implements`, `related`).
+    #[serde(default)]
+    relation: Option<String>,
+    /// Issue/Task title (for `create_issue`, `import_as_task`, or `link_task`).
+    #[serde(default)]
+    title: Option<String>,
+    /// Issue/Comment/Task body (for `create_issue`, `comment_issue`, or `import_as_task`).
+    #[serde(default)]
+    body: Option<String>,
+    /// Project whose GitHub integration to manage. Session-aware clients may omit it for
+    /// the current project. Static MCP clients must pass it together with `workspace` for
+    /// every project-scoped call.
+    #[serde(default)]
+    project: Option<String>,
+    /// Workspace of the project, together with `project`.
+    #[serde(default)]
+    workspace: Option<String>,
+}
+
+fn render_hub_board_markdown(
+    workspace: &str,
+    project: &str,
+    tasks: &[ai_memory_store::HubTask],
+    modules: &[ai_memory_store::HubModule],
+) -> String {
+    use std::fmt::Write as _;
+    let mut md = String::new();
+    let _ = writeln!(md, "# {project} — Engineering Task Board\n");
+    let _ = writeln!(
+        md,
+        "> Workspace: `{workspace}` · Project: `{project}` · Total Tasks: **{}**\n",
+        tasks.len()
+    );
+    if !modules.is_empty() {
+        let _ = writeln!(md, "## Modules\n");
+        for m in modules {
+            let lead = m.lead_username.as_deref().unwrap_or("unassigned");
+            let _ = writeln!(
+                md,
+                "- **{}** (`{}`) — Lead: @{lead} · Progress: {}/{} tasks",
+                m.name, m.status, m.task_done, m.task_total
+            );
+        }
+        let _ = writeln!(md);
+    }
+    for (state_key, heading) in [
+        ("in_progress", "In Progress"),
+        ("in_review", "In Review"),
+        ("todo", "Todo"),
+        ("backlog", "Backlog"),
+        ("done", "Done"),
+        ("cancelled", "Cancelled"),
+    ] {
+        let group: Vec<_> = tasks.iter().filter(|t| t.state == state_key).collect();
+        if group.is_empty() {
+            continue;
+        }
+        let _ = writeln!(md, "## {heading} ({})\n", group.len());
+        for t in group {
+            let check = if t.state == "done" { "x" } else { " " };
+            let assignees = if t.assignees.is_empty() {
+                String::new()
+            } else {
+                let names: Vec<_> = t
+                    .assignees
+                    .iter()
+                    .map(|a| format!("@{}", a.username))
+                    .collect();
+                format!(" · Assignees: {}", names.join(", "))
+            };
+            let due = t
+                .due_date
+                .as_deref()
+                .map(|d| format!(" · Due: `{d}`"))
+                .unwrap_or_default();
+            let _ = writeln!(
+                md,
+                "- [{check}] **{}**: {} (`{}`{assignees}{due})",
+                t.key, t.title, t.priority
+            );
+        }
+        let _ = writeln!(md);
+    }
+    md
+}
+
+async fn fetch_github_items_mcp(
+    full_name: &str,
+    token: Option<&str>,
+) -> Result<Vec<ai_memory_store::UpsertGithubItem>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("ai-hub-mcp/1.0")
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.github.com/repos/{full_name}/issues?state=all&per_page=50");
+    let mut req = client
+        .get(&url)
+        .header("Accept", "application/vnd.github+json");
+    if let Some(tok) = token.map(str::trim).filter(|s| !s.is_empty()) {
+        req = req.header("Authorization", format!("Bearer {tok}"));
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned {}", resp.status()));
+    }
+    let rows: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let is_pr = row.get("pull_request").is_some();
+        let number = row["number"].as_i64().unwrap_or(0);
+        if number <= 0 {
+            continue;
+        }
+        let raw_state = row["state"].as_str().unwrap_or("open");
+        let merged = row
+            .get("pull_request")
+            .and_then(|pr| pr.get("merged_at"))
+            .is_some_and(|v| !v.is_null());
+        let state = if merged {
+            "merged".to_string()
+        } else {
+            raw_state.to_string()
+        };
+        let assignees = row["assignees"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|u| u["login"].as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let labels = row["labels"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|l| {
+                        Some(ai_memory_store::HubGithubLabel {
+                            name: l["name"].as_str()?.to_string(),
+                            color: l["color"].as_str().unwrap_or("6366f1").to_string(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        items.push(ai_memory_store::UpsertGithubItem {
+            kind: if is_pr { "pr".into() } else { "issue".into() },
+            number,
+            title: row["title"].as_str().unwrap_or("").to_string(),
+            body: row["body"].as_str().unwrap_or("").to_string(),
+            state,
+            draft: row["draft"].as_bool().unwrap_or(false),
+            author_login: row["user"]["login"].as_str().unwrap_or("ghost").to_string(),
+            author_avatar_url: row["user"]["avatar_url"].as_str().map(str::to_owned),
+            assignees,
+            labels,
+            html_url: row["html_url"].as_str().unwrap_or("").to_string(),
+            head_ref: None,
+            base_ref: None,
+            comments_count: row["comments"].as_i64().unwrap_or(0),
+            gh_created_at: row["created_at"].as_str().map(str::to_owned),
+            gh_updated_at: row["updated_at"].as_str().map(str::to_owned),
+        });
+    }
+    Ok(items)
+}
+
+async fn create_github_issue_mcp(
+    full_name: &str,
+    token: &str,
+    title: &str,
+    body: &str,
+) -> Result<ai_memory_store::UpsertGithubItem, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("ai-hub-mcp/1.0")
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.github.com/repos/{full_name}/issues");
+    let resp = client
+        .post(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("Authorization", format!("Bearer {}", token.trim()))
+        .json(&serde_json::json!({ "title": title, "body": body }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned {}", resp.status()));
+    }
+    let row: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(ai_memory_store::UpsertGithubItem {
+        kind: "issue".to_string(),
+        number: row["number"].as_i64().unwrap_or(0),
+        title: row["title"].as_str().unwrap_or(title).to_string(),
+        body: row["body"].as_str().unwrap_or(body).to_string(),
+        state: row["state"].as_str().unwrap_or("open").to_string(),
+        draft: false,
+        author_login: row["user"]["login"].as_str().unwrap_or("user").to_string(),
+        author_avatar_url: row["user"]["avatar_url"].as_str().map(str::to_owned),
+        assignees: Vec::new(),
+        labels: Vec::new(),
+        html_url: row["html_url"].as_str().unwrap_or("").to_string(),
+        head_ref: None,
+        base_ref: None,
+        comments_count: 0,
+        gh_created_at: row["created_at"].as_str().map(str::to_owned),
+        gh_updated_at: row["updated_at"].as_str().map(str::to_owned),
+    })
+}
+
+async fn comment_github_issue_mcp(
+    full_name: &str,
+    token: &str,
+    number: i64,
+    body: &str,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("ai-hub-mcp/1.0")
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.github.com/repos/{full_name}/issues/{number}/comments");
+    let resp = client
+        .post(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("Authorization", format!("Bearer {}", token.trim()))
+        .json(&serde_json::json!({ "body": body }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned {}", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
 }
 
 fn hex_to_sha256(hex: &str) -> Result<[u8; 32], String> {
@@ -10287,6 +11872,14 @@ mod tests {
         "memory_lint",
         "memory_forget_sweep",
         "memory_install_self_routing",
+        "hub_task_list",
+        "hub_task_get",
+        "hub_task_create",
+        "hub_task_update",
+        "hub_task_comment",
+        "hub_module_manage",
+        "hub_project_team",
+        "hub_github_manage",
     ];
 
     const DETAILED_ROUTING_TOOL_NAMES: &[&str] = &[
@@ -10314,6 +11907,14 @@ mod tests {
         "memory_feedback",
         "memory_lint",
         "memory_forget_sweep",
+        "hub_task_list",
+        "hub_task_get",
+        "hub_task_create",
+        "hub_task_update",
+        "hub_task_comment",
+        "hub_module_manage",
+        "hub_project_team",
+        "hub_github_manage",
     ];
 
     #[test]

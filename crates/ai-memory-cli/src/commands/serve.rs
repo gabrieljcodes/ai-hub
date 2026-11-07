@@ -1217,6 +1217,7 @@ fn keepalive_listener(
 /// Returns an error if the store cannot be opened, the watcher cannot
 /// install, or the transport setup fails.
 pub async fn run(config: &Config, args: ServeArgs) -> Result<()> {
+    let mut config = config.clone();
     // Before anything slow: boot takes the pre-migration archive and runs the
     // wiki migrations, and a signal arriving in that window has to be caught
     // rather than fall through to the default disposition (#699).
@@ -1297,6 +1298,11 @@ pub async fn run(config: &Config, args: ServeArgs) -> Result<()> {
     }
 
     let api_credentials_exist = store.reader.api_credentials_exist().await?;
+    if config.auth.token_pepper.as_deref().unwrap_or("").trim().is_empty()
+        && let Ok(Some(auto_pepper)) = store.reader.get_auto_token_pepper().await
+    {
+        config.auth.token_pepper = Some(auto_pepper);
+    }
     validate_api_credential_pepper_binding(&store, api_credentials_exist, &config.auth).await?;
     let bootstrap_completed_before_start = store.reader.bootstrap_completed().await?;
     validate_configured_secret_collisions(&store, &config.auth, !bootstrap_completed_before_start)

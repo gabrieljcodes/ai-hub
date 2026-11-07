@@ -13,6 +13,9 @@ static TAILWIND_CSS: &str = include_str!(env!("AI_MEMORY_WEB_TAILWIND_CSS"));
 /// Logo (PNG), embedded at compile time from `docs/logo.png`.
 static LOGO: &[u8] = include_bytes!("../../../../docs/logo.png");
 
+/// Full horizontal lockup logo (PNG), embedded at compile time from `docs/logo-dark.png`.
+static LOGO_FULL: &[u8] = include_bytes!("../../../../docs/logo-dark.png");
+
 /// Self-hosted fonts shared with the management surface.
 pub(crate) async fn font(
     axum::extract::Path(name): axum::extract::Path<String>,
@@ -45,6 +48,11 @@ pub(crate) async fn tailwind_css() -> impl IntoResponse {
 /// `GET /static/logo.png`
 pub(crate) async fn logo() -> impl IntoResponse {
     png_response(LOGO)
+}
+
+/// `GET /static/logo-full.png`
+pub(crate) async fn logo_full() -> impl IntoResponse {
+    png_response(LOGO_FULL)
 }
 
 /// `GET /favicon.ico` — same PNG as the header logo (browsers request this path by default).

@@ -1,16 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}{{ title }} — ai-memory{% endblock %}
+{% block title %}{{ title }} — ai-hub{% endblock %}
 
 {% block header_search %}{% include "_header_search_scoped.html" %}{% endblock %}
 
 {% block content %}
-<nav aria-label="Breadcrumb" class="mb-6 flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
-  <a href="." class="hover:text-blue-600 dark:hover:text-blue-400">home</a>
-  <span aria-hidden="true">/</span>
-  <a href="{{ project_href }}" class="hover:text-blue-600 dark:hover:text-blue-400">{{ workspace }}/{{ project }}</a>
-  <span aria-hidden="true">/</span>
-  <span aria-current="page" class="text-slate-700 dark:text-slate-200 truncate max-w-xs">{{ path }}</span>
+<nav aria-label="Breadcrumb" class="mb-6 flex items-center justify-between gap-4 flex-wrap text-sm text-slate-500 dark:text-slate-400">
+  <div class="flex items-center gap-1">
+    <a href="." class="hover:text-blue-600 dark:hover:text-blue-400">home</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ project_href }}" class="hover:text-blue-600 dark:hover:text-blue-400">{{ workspace }}/{{ project }}</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page" class="text-slate-700 dark:text-slate-200 truncate max-w-xs">{{ path }}</span>
+  </div>
+  <div class="hub-heading-actions">
+    <button type="button" id="hub-edit-page-btn" class="secondary-button">✎ Edit Markdown</button>
+    <a href="{{ history_href }}" class="secondary-button">↻ Git History</a>
+    <button type="button" id="hub-delete-page-btn" class="quiet-button">Delete</button>
+  </div>
 </nav>
 
 <div class="lg:flex lg:items-start lg:gap-10">
@@ -124,4 +131,124 @@
   {% endif %}
 </aside>
 </div>
+
+<!-- Modal: Edit Wiki Page Markdown -->
+<div id="hub-modal-edit-page" class="hub-modal-backdrop" hidden data-workspace="{{ workspace }}" data-project="{{ project }}" data-path="{{ path }}" data-project-href="{{ project_href }}">
+  <div class="hub-modal hub-modal-xl" role="dialog" aria-modal="true" aria-labelledby="hub-edit-page-title">
+    <div class="hub-modal-header">
+      <div>
+        <span class="hub-eyebrow">GIT-BACKED WIKI MARKDOWN</span>
+        <h2 id="hub-edit-page-title">Edit {{ path }}</h2>
+      </div>
+      <button type="button" class="hub-icon-btn" id="hub-close-edit-page" aria-label="Close">✕</button>
+    </div>
+    <form id="hub-edit-page-form" class="hub-modal-body hub-form">
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-edit-title">Page Title</label>
+          <input id="hub-edit-title" type="text" class="hub-input" value="{{ title }}" required>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-edit-kind">Kind</label>
+          <input id="hub-edit-kind" type="text" class="hub-input" value="{{ kind }}">
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-edit-tier">Tier</label>
+          <select id="hub-edit-tier" class="hub-select">
+            <option value="semantic" {% if tier == "semantic" %}selected{% endif %}>semantic</option>
+            <option value="episodic" {% if tier == "episodic" %}selected{% endif %}>episodic</option>
+            <option value="procedural" {% if tier == "procedural" %}selected{% endif %}>procedural</option>
+          </select>
+        </div>
+      </div>
+      <div class="hub-field">
+        <label class="hub-label" for="hub-edit-body">Markdown Content</label>
+        <textarea id="hub-edit-body" class="hub-textarea mono" rows="16" required></textarea>
+      </div>
+      <label class="hub-toggle-row">
+        <input type="checkbox" id="hub-edit-pinned" {% if pinned %}checked{% endif %}>
+        <span>Pin this page to top of recall</span>
+      </label>
+      <p id="hub-edit-page-err" class="hub-alert hub-alert-danger" hidden></p>
+      <div class="hub-modal-footer">
+        <button type="button" class="hub-btn hub-btn-secondary" id="hub-cancel-edit-page">Cancel</button>
+        <button type="submit" class="hub-btn hub-btn-primary">Commit Markdown Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var basePath = document.querySelector('meta[name="ai-memory-base-path"]')?.content || "";
+  var modal = document.getElementById("hub-modal-edit-page");
+  var ws = modal ? (modal.getAttribute("data-workspace") || "") : "";
+  var proj = modal ? (modal.getAttribute("data-project") || "") : "";
+  var pagePath = modal ? (modal.getAttribute("data-path") || "") : "";
+  var projectHref = modal ? (modal.getAttribute("data-project-href") || "") : "";
+  var editBtn = document.getElementById("hub-edit-page-btn");
+  var delBtn = document.getElementById("hub-delete-page-btn");
+  var closeBtn = document.getElementById("hub-close-edit-page");
+  var cancelBtn = document.getElementById("hub-cancel-edit-page");
+  var form = document.getElementById("hub-edit-page-form");
+  var bodyArea = document.getElementById("hub-edit-body");
+  var errEl = document.getElementById("hub-edit-page-err");
+
+  if (editBtn) {
+    editBtn.addEventListener("click", function () {
+      modal.hidden = false;
+      bodyArea.value = "Loading raw Markdown…";
+      fetch(basePath + "/api/v1/workspaces/" + encodeURIComponent(ws) + "/projects/" + encodeURIComponent(proj) + "/pages/" + pagePath, {
+        credentials: "include"
+      }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          bodyArea.value = (data && data.body) ? data.body : ("# " + document.getElementById("hub-edit-title").value + "\n\n");
+        });
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener("click", function () { modal.hidden = true; });
+  if (cancelBtn) cancelBtn.addEventListener("click", function () { modal.hidden = true; });
+
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      errEl.hidden = true;
+      fetch(basePath + "/api/v1/hub/projects/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj) + "/pages", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: pagePath,
+          title: document.getElementById("hub-edit-title").value.trim(),
+          kind: document.getElementById("hub-edit-kind").value.trim() || "fact",
+          tier: document.getElementById("hub-edit-tier").value,
+          pinned: document.getElementById("hub-edit-pinned").checked,
+          body: bodyArea.value
+        })
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok) {
+            errEl.textContent = (res.j && res.j.error) || "Failed to save page";
+            errEl.hidden = false;
+            return;
+          }
+          location.reload();
+        });
+    });
+  }
+
+  if (delBtn) {
+    delBtn.addEventListener("click", function () {
+      if (!confirm("Delete wiki page " + pagePath + "? This will create a removal commit in the git wiki.")) return;
+      fetch(basePath + "/api/v1/hub/projects/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj) + "/pages/" + pagePath, {
+        method: "DELETE",
+        credentials: "include"
+      }).then(function (r) {
+        if (r.ok) location.assign(projectHref);
+        else alert("Permission denied or delete failed.");
+      });
+    });
+  }
+})();
+</script>
 {% endblock %}

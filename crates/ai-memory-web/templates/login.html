@@ -1,56 +1,93 @@
 {% extends "base.html" %}
 
-{% block title %}Sign in — ai-memory{% endblock %}
+{% block title %}Sign in — ai-hub{% endblock %}
 
 {% block header_actions %}{% endblock %}
 {% block footer_version %}{% endblock %}
+{% block nav_version %}{% endblock %}
 
 {% block content %}
-<div class="max-w-md">
-  <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100">Sign in</h1>
-  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Use your ai-memory username and password.</p>
-
-  <p id="auth-error" class="mt-4 hidden text-sm text-amber-800 dark:text-amber-300" role="alert"></p>
-
-  <form id="login-form" class="mt-4 space-y-3" autocomplete="on"
-        data-next="{{ next }}"
-        data-change-password="{{ change_password_href }}">
-    <div>
-      <label for="username" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
-      <input
-        id="username"
-        name="username"
-        type="text"
-        autocomplete="username"
-        required
-        class="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
+<div class="hub-auth-wrap">
+  <div class="hub-auth-card">
+    <div class="hub-auth-brand">
+      <img src="static/logo-full.png" alt="ai-hub" class="hub-auth-logo" width="200" height="56">
+      <span class="hub-auth-badge mono"><span class="hub-led hub-led-live" aria-hidden="true"></span> AUTH // GATEWAY</span>
     </div>
-    <div>
-      <label for="password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        autocomplete="current-password"
-        required
-        class="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
+    <div class="hub-auth-header">
+      <h1>Sign in to Workspace</h1>
+      <p>Authenticate with your team credentials to access engineering boards, GitHub sync, and Git-backed memory.</p>
     </div>
-    <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-      Sign in
-    </button>
-  </form>
+
+    <div id="setup-hint" class="hub-alert hub-alert-info" hidden>
+      <strong class="mono">[BOOTSTRAP]</strong> No accounts exist on this node yet. <a href="register" class="underline font-semibold">Register the first account</a> to claim <strong>Root Admin</strong> privileges.
+    </div>
+
+    <p id="auth-error" class="hidden hub-alert hub-alert-danger mono" role="alert"></p>
+
+    <form id="login-form" class="hub-form" autocomplete="on"
+          data-next="{{ next }}"
+          data-change-password="{{ change_password_href }}">
+      <div class="hub-field">
+        <label for="username" class="hub-label mono">USERNAME</label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          autocomplete="username"
+          placeholder="username"
+          required
+          class="hub-input mono"
+        >
+      </div>
+      <div class="hub-field">
+        <label for="password" class="hub-label mono">PASSWORD</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          placeholder="••••••••••••"
+          required
+          class="hub-input mono"
+        >
+      </div>
+      <button type="submit" class="hub-btn hub-btn-primary hub-btn-full">
+        Sign in →
+      </button>
+    </form>
+
+    <div class="hub-auth-footer" id="register-link-wrap">
+      <span>Don't have a workspace account?</span>
+      <a href="register" class="mono">Create account →</a>
+    </div>
+  </div>
 </div>
 <script>
 (function () {
   var form = document.getElementById("login-form");
   var err = document.getElementById("auth-error");
+  var setupHint = document.getElementById("setup-hint");
+  var regWrap = document.getElementById("register-link-wrap");
   var next = form.getAttribute("data-next") || "/";
   var changePassword = form.getAttribute("data-change-password") || "change-password";
   var basePath = document
     .querySelector('meta[name="ai-memory-base-path"]')
     ?.getAttribute("content") || "";
+
+  fetch(basePath + "/auth/status", { credentials: "include" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (st) {
+      if (!st) return;
+      if (st.needs_setup || !st.users_exist || !st.bootstrap_completed) {
+        setupHint.hidden = false;
+        location.replace("register" + (next ? "?next=" + encodeURIComponent(next) : ""));
+        return;
+      } else if (!st.allow_registration && regWrap) {
+        regWrap.hidden = true;
+      }
+    })
+    .catch(function () {});
+
   function showError(msg) {
     err.textContent = msg;
     err.classList.remove("hidden");

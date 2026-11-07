@@ -6608,3 +6608,126 @@ async fn search_alias_links_require_a_grant_and_refuse_ambiguous_names() {
     assert_eq!(status, StatusCode::OK, "{html}");
     assert!(html.contains("notes/alias.md"), "{html}");
 }
+
+#[tokio::test]
+async fn hub_personal_api_keys_lifecycle() {
+    use ai_memory_core::NewUser;
+    use serde_json::json;
+
+    let (_tmp, store, wiki) = setup().await;
+    let uid = store
+        .writer
+        .create_human_user(
+            NewUser {
+                username: "bakalhau".into(),
+                name: Some("Bakalhau".into()),
+                email: None,
+            },
+            ai_memory_core::UserRole::User,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+
+    let app = api_router(store.reader.clone(), wiki);
+
+    // 1. Create personal API key
+    let create_req = Request::builder()
+        .method(Method::POST)
+        .uri("/hub/me/api-keys")
+        .header(header::CONTENT_TYPE, "application/json")
+        .extension(uid)
+        .body(Body::from(json!({ "label": "MyNixOS" }).to_string()))
+        .unwrap();
+    let create_resp = app.clone().oneshot(create_req).await.unwrap();
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let create_body: Value = serde_json::from_slice(
+        &axum::body::to_bytes(create_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let token = create_body["token"].as_str().expect("raw token");
+    let key_id = create_body["id"].as_str().expect("key id");
+    assert!(token.starts_with("aim_"));
+    assert_eq!(create_body["label"], "MyNixOS");
+
+    // 2. List keys
+    let list_req = Request::builder()
+        .method(Method::GET)
+        .uri("/hub/me/api-keys")
+        .extension(uid)
+        .body(Body::empty())
+        .unwrap();
+    let list_resp = app.clone().oneshot(list_req).await.unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_body: Value = serde_json::from_slice(
+        &axum::body::to_bytes(list_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let list_arr = list_body.as_array().expect("array of credentials");
+    assert_eq!(list_arr.len(), 1);
+    assert_eq!(list_arr[0]["id"], key_id);
+    assert_eq!(list_arr[0]["label"], "MyNixOS");
+    assert!(list_arr[0]["revoked_at"].is_null());
+
+    // 3. Revoke via POST /hub/me/api-keys/{id}/revoke
+    let revoke_req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("/hub/me/api-keys/{key_id}/revoke"))
+        .extension(uid)
+        .body(Body::empty())
+        .unwrap();
+    let revoke_resp = app.clone().oneshot(revoke_req).await.unwrap();
+    assert_eq!(revoke_resp.status(), StatusCode::NO_CONTENT);
+
+    // 4. Verify listed as revoked
+    let list_req2 = Request::builder()
+        .method(Method::GET)
+        .uri("/hub/me/api-keys")
+        .extension(uid)
+        .body(Body::empty())
+        .unwrap();
+    let list_resp2 = app.clone().oneshot(list_req2).await.unwrap();
+    let list_body2: Value = serde_json::from_slice(
+        &axum::body::to_bytes(list_resp2.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let list_arr2 = list_body2.as_array().expect("array");
+    assert_eq!(list_arr2.len(), 1);
+    assert!(!list_arr2[0]["revoked_at"].is_null());
+
+    // 5. Create a second key and revoke via DELETE /hub/me/api-keys/{id}
+    let create_req2 = Request::builder()
+        .method(Method::POST)
+        .uri("/hub/me/api-keys")
+        .header(header::CONTENT_TYPE, "application/json")
+        .extension(uid)
+        .body(Body::from(
+            json!({ "label": "workstation-cursor" }).to_string(),
+        ))
+        .unwrap();
+    let create_resp2 = app.clone().oneshot(create_req2).await.unwrap();
+    assert_eq!(create_resp2.status(), StatusCode::CREATED);
+    let create_body2: Value = serde_json::from_slice(
+        &axum::body::to_bytes(create_resp2.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let key_id2 = create_body2["id"].as_str().unwrap();
+
+    let delete_req = Request::builder()
+        .method(Method::DELETE)
+        .uri(format!("/hub/me/api-keys/{key_id2}"))
+        .extension(uid)
+        .body(Body::empty())
+        .unwrap();
+    let delete_resp = app.oneshot(delete_req).await.unwrap();
+    assert_eq!(delete_resp.status(), StatusCode::NO_CONTENT);
+}

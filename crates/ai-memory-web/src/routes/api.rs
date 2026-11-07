@@ -89,6 +89,7 @@ pub(crate) fn build(state: Arc<WebState>) -> Router {
             "/workspaces/{workspace}/projects/{project}/graph",
             axum::routing::get(project_graph_handler),
         )
+        .nest("/hub", super::hub_api::build())
         .with_state(state)
 }
 

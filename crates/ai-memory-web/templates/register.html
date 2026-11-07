@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Create account — ai-hub{% endblock %}
+
+{% block header_actions %}{% endblock %}
+{% block footer_version %}{% endblock %}
+{% block nav_version %}{% endblock %}
+
+{% block content %}
+<div class="hub-auth-wrap">
+  <div class="hub-auth-card">
+    <div class="hub-auth-brand">
+      <img src="static/logo-full.png" alt="ai-hub" class="hub-auth-logo" width="200" height="56">
+      <span class="hub-auth-badge mono"><span class="hub-led hub-led-live" aria-hidden="true"></span> INIT // ACCOUNT</span>
+    </div>
+    <div class="hub-auth-header">
+      <h1>Create Workspace Account</h1>
+      <p>Register your developer identity to collaborate on project tasks, GitHub repositories, and shared agent memory.</p>
+    </div>
+
+    <div id="setup-banner" class="hub-alert hub-alert-info" hidden>
+      <strong class="mono">[ROOT_BOOTSTRAP]</strong> No accounts exist yet. The first account registered on this server automatically receives <strong>Root Administrator</strong> authority.
+    </div>
+
+    <div id="closed-banner" class="hub-alert hub-alert-warn" hidden>
+      <strong class="mono">[INVITE_ONLY]</strong> Open registration is disabled on this instance. Ask a workspace administrator to provision your account.
+    </div>
+
+    <p id="auth-error" class="hub-alert hub-alert-danger hidden mono" role="alert"></p>
+
+    <form id="register-form" class="hub-form" autocomplete="on" data-next="{{ next }}">
+      <div class="hub-field">
+        <label for="username" class="hub-label mono">HANDLE / USERNAME <span class="hub-req">*</span></label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          autocomplete="username"
+          placeholder="e.g. alex"
+          required
+          class="hub-input mono"
+        >
+        <span class="hub-hint">Lowercase letters, numbers, hyphens, or underscores. Used for @mentions and task ownership.</span>
+      </div>
+
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label for="display-name" class="hub-label mono">DISPLAY NAME</label>
+          <input
+            id="display-name"
+            name="name"
+            type="text"
+            autocomplete="name"
+            placeholder="Alex Rivera"
+            class="hub-input"
+          >
+        </div>
+        <div class="hub-field">
+          <label for="email" class="hub-label mono">WORK EMAIL</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            placeholder="alex@company.com"
+            class="hub-input mono"
+          >
+        </div>
+      </div>
+
+      <div class="hub-field">
+        <label for="password" class="hub-label mono">PASSWORD <span class="hub-req">*</span></label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="new-password"
+          placeholder="Minimum 12 characters"
+          minlength="12"
+          required
+          class="hub-input mono"
+        >
+      </div>
+
+      <button type="submit" id="register-submit" class="hub-btn hub-btn-primary hub-btn-full">
+        Provision Account &amp; Enter →
+      </button>
+    </form>
+
+    <div class="hub-auth-footer">
+      <span>Already registered on this hub?</span>
+      <a href="{{ login_href }}" class="mono">Sign in →</a>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var form = document.getElementById("register-form");
+  var err = document.getElementById("auth-error");
+  var setupBanner = document.getElementById("setup-banner");
+  var closedBanner = document.getElementById("closed-banner");
+  var submitBtn = document.getElementById("register-submit");
+  var next = form.getAttribute("data-next") || "/";
+  var basePath = document
+    .querySelector('meta[name="ai-memory-base-path"]')
+    ?.getAttribute("content") || "";
+
+  function showError(msg) {
+    err.textContent = msg;
+    err.classList.remove("hidden");
+  }
+
+  fetch(basePath + "/auth/status", { credentials: "include" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (st) {
+      if (!st) return;
+      if (st.needs_setup) {
+        setupBanner.hidden = false;
+      } else if (!st.allow_registration) {
+        closedBanner.hidden = false;
+        submitBtn.disabled = true;
+      }
+    })
+    .catch(function () {});
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    err.classList.add("hidden");
+    var body = {
+      username: document.getElementById("username").value.trim(),
+      name: document.getElementById("display-name").value.trim() || null,
+      email: document.getElementById("email").value.trim() || null,
+      password: document.getElementById("password").value
+    };
+    submitBtn.disabled = true;
+    fetch(basePath + "/auth/register", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (resp) {
+      return resp.json().catch(function () { return {}; }).then(function (json) {
+        submitBtn.disabled = false;
+        if (!resp.ok) {
+          showError((json && json.error) || ("Registration failed (" + resp.status + ")"));
+          return;
+        }
+        location.assign(next);
+      });
+    }).catch(function () {
+      submitBtn.disabled = false;
+      showError("Network error — try again.");
+    });
+  });
+})();
+</script>
+{% endblock %}

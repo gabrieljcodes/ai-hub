@@ -54,6 +54,7 @@ const MESSAGING_DESCRIPTION: &str = "Use this skill for cross-project agent-to-a
 const DURABLE_PAGES_DESCRIPTION: &str = "Use this skill for any explicit wiki mutation in ai-memory: saving durable or time-bounded project knowledge, recording a rule or annotation, updating a note, or deleting a memory page. Trigger by semantic intent rather than exact wording; routine session capture is not a durable-page request.";
 const LEARNING_MAINTENANCE_DESCRIPTION: &str = "Use this skill for any ai-memory knowledge-base maintenance request: consolidating observations, reviewing session lessons, proposing durable learnings, auditing or linting the wiki, finding contradictions, pruning stale memory, or running auto-improvement. Trigger by semantic intent rather than exact wording.";
 const ROUTING_INSTALL_DESCRIPTION: &str = "Use this skill for any request to install, refresh, repair, inspect, or remove ai-memory's agent-facing routing: managed instruction snippets, Agent Skills, CLAUDE.md/AGENTS.md integration, or local/global skill roots. Trigger by semantic intent rather than exact wording.";
+const HUB_DESCRIPTION: &str = "Use this skill for any ai-hub project management, task tracking, module or sprint planning, team access management, or GitHub repository/issue/PR integration request: listing, creating, or updating tasks (Assignees, State, Priority, Start/Due date, Modules, Cycles, Labels, Subtasks, Wiki links), commenting on tasks, committing the task board to Markdown in Git, managing project team members, or syncing and linking GitHub Issues and PRs. Trigger by semantic intent rather than exact wording.";
 
 /// One ai-memory-managed Agent Skill file bundled by the core crate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,6 +107,12 @@ pub const MANAGED_SKILLS: &[ManagedSkill] = &[
         relative_path: "ai-memory-routing-install/SKILL.md",
         content: include_str!("routing_skills/ai-memory-routing-install/SKILL.md"),
     },
+    ManagedSkill {
+        name: "ai-memory-hub",
+        description: HUB_DESCRIPTION,
+        relative_path: "ai-memory-hub/SKILL.md",
+        content: include_str!("routing_skills/ai-memory-hub/SKILL.md"),
+    },
 ];
 
 #[cfg(test)]
@@ -126,6 +133,7 @@ mod tests {
         "ai-memory-durable-pages",
         "ai-memory-learning-maintenance",
         "ai-memory-routing-install",
+        "ai-memory-hub",
     ];
 
     const EXPECTED_TOOL_CLUSTERS: &[(&str, &str)] = &[
@@ -153,6 +161,14 @@ mod tests {
         ("memory_lint", "ai-memory-learning-maintenance"),
         ("memory_forget_sweep", "ai-memory-learning-maintenance"),
         ("memory_install_self_routing", "ai-memory-routing-install"),
+        ("hub_task_list", "ai-memory-hub"),
+        ("hub_task_get", "ai-memory-hub"),
+        ("hub_task_create", "ai-memory-hub"),
+        ("hub_task_update", "ai-memory-hub"),
+        ("hub_task_comment", "ai-memory-hub"),
+        ("hub_module_manage", "ai-memory-hub"),
+        ("hub_project_team", "ai-memory-hub"),
+        ("hub_github_manage", "ai-memory-hub"),
     ];
     const PROJECT_SCOPED_SKILLS: &[&str] = &[
         "ai-memory-retrieval",
@@ -160,6 +176,7 @@ mod tests {
         "ai-memory-messaging",
         "ai-memory-durable-pages",
         "ai-memory-learning-maintenance",
+        "ai-memory-hub",
     ];
 
     #[derive(Debug, serde::Deserialize)]

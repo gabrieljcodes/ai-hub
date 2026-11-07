@@ -14,6 +14,7 @@ mod documentation;
 mod graph;
 mod health;
 mod history;
+pub(crate) mod hub_api;
 mod inbox;
 mod index;
 mod login;
@@ -156,9 +157,11 @@ pub(crate) fn build(state: Arc<WebState>) -> Router {
 pub(crate) fn build_public_auth(cfg: Arc<HtmlAuthRedirectConfig>) -> Router {
     Router::new()
         .route("/login", get(login::login))
+        .route("/register", get(login::register))
         .route("/change-password", get(login::change_password))
         .route("/static/tailwind.css", get(statics::tailwind_css))
         .route("/static/logo.png", get(statics::logo))
+        .route("/static/logo-full.png", get(statics::logo_full))
         .route("/static/{font}", get(statics::font))
         .with_state(cfg)
 }

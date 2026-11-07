@@ -888,6 +888,9 @@ pub(crate) enum WriteCmd {
         need: crate::ProjectAccess,
         reply: oneshot::Sender<StoreResult<Result<(), ai_memory_core::AuthzError>>>,
     },
+    HubClosure {
+        op: Box<dyn FnOnce(&mut Connection) + Send>,
+    },
     Shutdown,
 }
 
@@ -3853,6 +3856,23 @@ impl WriterHandle {
         rx.await.map_err(|_| StoreError::WriterClosed)?
     }
 
+    /// Run a typed closure on the single writer connection.
+    pub(crate) async fn with_conn<F, T>(&self, f: F) -> StoreResult<T>
+    where
+        F: FnOnce(&mut Connection) -> StoreResult<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        self.send(WriteCmd::HubClosure {
+            op: Box::new(move |conn| {
+                let res = f(conn);
+                send_or_warn(tx, res, "hub_closure");
+            }),
+        })
+        .await?;
+        rx.await.map_err(|_| StoreError::WriterClosed)?
+    }
+
     async fn send(&self, cmd: WriteCmd) -> StoreResult<()> {
         self.inner
             .tx
@@ -3988,6 +4008,9 @@ fn worker_loop(mut conn: Connection, mut rx: mpsc::Receiver<WriteCmd>) {
                 )
                 .map(|ctx| ctx.authorize(need));
                 send_or_warn(reply, result, "authorize_project");
+            }
+            WriteCmd::HubClosure { op } => {
+                op(&mut conn);
             }
             WriteCmd::GetOrCreateWorkspace { name, reply } => {
                 let result = ops::get_or_create_workspace(&mut conn, &name);

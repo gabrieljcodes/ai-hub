@@ -22,6 +22,7 @@ pub mod decay;
 mod error;
 mod fts_query;
 mod grants;
+pub mod hub;
 mod maintenance;
 mod migrations;
 mod ops;
@@ -63,6 +64,7 @@ pub use error::{
     AmbiguousMatch, AmbiguousProjectHolder, AmbiguousProjectHolders, StoreError, StoreResult,
 };
 pub use grants::{GrantFilter, GrantListing, GrantOutcome, ProjectGrant};
+pub use hub::*;
 pub use maintenance::MaintenanceJob;
 pub use ops::{
     AdmittedSession, BootstrapChunkRecord, CompactSummary, Compaction, ConditionalBatchUpsert,

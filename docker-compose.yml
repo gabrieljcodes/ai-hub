@@ -1,0 +1,46 @@
+# docker-compose.yml for ai-hub
+#
+# Run from repository root:
+#   docker compose up -d
+#
+# Web Interface & Hub:
+#   http://localhost:49374
+# MCP HTTP Endpoint:
+#   http://localhost:49374/mcp
+
+services:
+  ai-hub:
+    image: ai-hub:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime-source
+    container_name: ai-hub
+    restart: unless-stopped
+    user: "1000:1000"
+    volumes:
+      - ai-hub-data:/data
+    ports:
+      - "0.0.0.0:49374:49374"
+    command:
+      - serve
+      - --transport
+      - http
+      - --bind
+      - 0.0.0.0:49374
+      - --enable-web
+      - --allow-insecure-human-auth
+    environment:
+      - RUST_LOG=ai_memory=info,ai_memory_store=info,ai_memory_wiki=info,ai_memory_mcp=info,ai_memory_web=info,tracing_appender=warn
+      - AI_MEMORY_ALLOWED_HOSTS=localhost,127.0.0.1,::1,host.docker.internal
+      - AI_MEMORY_IN_CONTAINER=1
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/49374"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  ai-hub-data:
+    name: ai-hub-data

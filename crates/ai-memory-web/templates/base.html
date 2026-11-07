@@ -1,57 +1,335 @@
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="en" class="h-full dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#06070b">
   <title>{% block title %}ai-memory{% endblock %}</title>
   <link rel="icon" href="static/logo.png" type="image/png">
   {% include "_theme.html" %}
+  <script>
+  {% include "_js_cookie.html" %}
+  function hubCsrfToken() {
+    try {
+      return decodeURIComponent(cookie("ai_memory_csrf") || "");
+    } catch (e) {
+      return "";
+    }
+  }
+  window.__AI_HUB_CSRF__ = hubCsrfToken;
+
+  function hubCopyText(text, btn) {
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+        if (btn) {
+          var old = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(function () { btn.textContent = old; }, 1800);
+        }
+      } catch (e) {
+        if (btn) btn.textContent = "Copy failed";
+      }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        if (btn) {
+          var old = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(function () { btn.textContent = old; }, 1800);
+        }
+      }).catch(function () {
+        fallback();
+      });
+    } else {
+      fallback();
+    }
+  }
+  window.__AI_HUB_COPY__ = hubCopyText;
+
+  // Intercept all mutating fetch requests to include CSRF token & credentials automatically
+  (function () {
+    var origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      init = init || {};
+      var method = (init.method || "GET").toUpperCase();
+      if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+        var csrf = hubCsrfToken();
+        if (csrf) {
+          if (!init.headers) {
+            init.headers = { "X-CSRF-Token": csrf };
+          } else if (typeof Headers !== "undefined" && init.headers instanceof Headers) {
+            if (!init.headers.has("X-CSRF-Token") && !init.headers.has("x-csrf-token")) {
+              init.headers.set("X-CSRF-Token", csrf);
+            }
+          } else if (Array.isArray(init.headers)) {
+            var hasCsrf = init.headers.some(function (pair) {
+              return String(pair[0]).toLowerCase() === "x-csrf-token";
+            });
+            if (!hasCsrf) init.headers.push(["X-CSRF-Token", csrf]);
+          } else if (typeof init.headers === "object") {
+            if (!init.headers["X-CSRF-Token"] && !init.headers["x-csrf-token"]) {
+              init.headers["X-CSRF-Token"] = csrf;
+            }
+          }
+        }
+        if (init.credentials === undefined) {
+          init.credentials = "include";
+        }
+      }
+      return origFetch.call(this, input, init);
+    };
+  })();
+  </script>
   <link rel="stylesheet" href="static/tailwind.css">
 </head>
 <body class="dashboard-shell">
   <a id="skip-link" href="#main-content" class="skip-link">Skip to content</a>
   <aside class="app-sidebar" id="app-navigation" aria-label="Workspace navigation">
-    <a href="." class="app-brand"><img src="static/logo.png" alt="" width="34" height="34"><span>ai-memory<small>AGENT WORKSPACE</small></span></a>
-    <p class="nav-label">WORKSPACE</p>
+    <a href="." class="app-brand" aria-label="ai-hub home">
+      <img src="static/logo-full.png" alt="ai-hub" class="app-brand-logo" width="154" height="48">
+      <div class="app-brand-status">
+        <span class="hub-led hub-led-online" aria-hidden="true"></span>
+        <span class="mono">SYS // MULTI-USER HUB</span>
+      </div>
+    </a>
+
+    <p class="nav-label mono">// WORKSPACE</p>
     <nav aria-label="Main" class="app-nav">
-      <a href="." data-nav="projects"><span aria-hidden="true">▦</span>Projects</a>
-      <a href="inbox" data-nav="inbox"><span aria-hidden="true">✉</span>Inbox <span id="inbox-pending-count" class="nav-message-count" hidden aria-hidden="true"></span></a>
+      <a href="." data-nav="projects">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></span>
+        <span>Projects &amp; Boards</span>
+      </a>
+      <a href="inbox" data-nav="inbox">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h9A1.5 1.5 0 0 1 14 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7Z"/><path d="m2.5 4 5.5 4.2L13.5 4"/></svg></span>
+        <span>Agent Inbox</span>
+        <span id="inbox-pending-count" class="nav-message-count mono" hidden aria-hidden="true"></span>
+      </a>
       <div id="inbox-notifications" class="nav-inbox-notifications" hidden><p id="inbox-notification-summary"></p><ul id="inbox-notification-projects" aria-label="Projects with pending messages"></ul></div>
       <span id="inbox-notification-status" class="sr-only" role="status" aria-live="polite"></span>
-      <a href="workstreams" data-nav="workstreams" {% block nav_workstreams_current %}{% endblock %}><span aria-hidden="true">⑂</span>Workstreams</a>
-      <a href="search" data-nav="search"><span aria-hidden="true">⌕</span>Search memory</a>
-      <a href="graph" data-nav="graph" {% block nav_graph_current %}{% endblock %}><span aria-hidden="true">⌘</span>Knowledge graph</a>
-      <p class="nav-label">OBSERVE &amp; IMPROVE</p>
-      <a href="pending" data-nav="pending" {% block nav_pending_current %}{% endblock %}><span aria-hidden="true">☷</span>Learning review</a>
-      <a href="health" data-nav="health" {% block nav_health_current %}{% endblock %}><span aria-hidden="true">⌁</span>Server health</a>
-      <p class="nav-label">RESOURCES</p>
-      <a href="docs" data-nav="docs" {% block nav_docs_current %}{% endblock %}><span aria-hidden="true">▤</span>Documentation</a>
-      <a href="docs/changelog" data-nav="changelog" {% block nav_changelog_current %}{% endblock %}><span aria-hidden="true">↻</span>Changelog</a>
+      <a href="workstreams" data-nav="workstreams" {% block nav_workstreams_current %}{% endblock %}>
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.75"/><circle cx="4" cy="12" r="1.75"/><circle cx="12" cy="8" r="1.75"/><path d="M4 5.75v4.5M5.75 4h2.5a2 2 0 0 1 2 2v.25"/></svg></span>
+        <span>Workstreams</span>
+      </a>
+      <a href="search" data-nav="search">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg></span>
+        <span>Search Memory</span>
+      </a>
+      <a href="graph" data-nav="graph" {% block nav_graph_current %}{% endblock %}>
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3.5" cy="8" r="1.75"/><circle cx="12" cy="3.5" r="1.75"/><circle cx="12" cy="12.5" r="1.75"/><path d="M5.1 7.2 10.4 4.3M5.1 8.8l5.3 2.9"/></svg></span>
+        <span>Knowledge graph</span>
+      </a>
+
+      <p class="nav-label mono">// TELEMETRY &amp; OPS</p>
+      <a href="pending" data-nav="pending" {% block nav_pending_current %}{% endblock %}>
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M3 8h7M3 12h5"/><circle cx="12" cy="11" r="2"/></svg></span>
+        <span>Learning Review</span>
+      </a>
+      <a href="health" data-nav="health" {% block nav_health_current %}{% endblock %}>
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 8h3l1.8-4.5 3.4 9 1.8-4.5h3"/></svg></span>
+        <span>Server Health</span>
+      </a>
+
+      <p class="nav-label mono">// DOCS &amp; SPEC</p>
+      <a href="docs" data-nav="docs" {% block nav_docs_current %}{% endblock %}>
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg></span>
+        <span>Documentation</span>
+      </a>
+      <a href="docs/changelog" data-nav="changelog" {% block nav_changelog_current %}{% endblock %}>
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3.5v4.5l3 1.5"/><circle cx="8" cy="8" r="5.5"/></svg></span>
+        <span>Changelog</span>
+      </a>
     </nav>
-    <div class="nav-bottom"><span class="nav-orbit" aria-hidden="true">◈</span><strong>Context that stays.<small>Across agents. Across sessions.</small></strong></div>
+
+    <div class="nav-bottom">
+      <div class="hub-nav-footer mono">
+        <div class="hub-nav-footer-top">
+          <span class="hub-nav-status">
+            <span class="hub-led hub-led-live" aria-hidden="true"></span>
+            <span>NODE ONLINE</span>
+          </span>
+          <span class="hub-nav-ver">{% block nav_version %}v{{ crate::templates::VERSION }}{% endblock %}</span>
+        </div>
+        <div class="hub-nav-footer-sub">
+          <span>STORAGE</span>
+          <span class="hub-nav-val">SQLITE + GIT</span>
+        </div>
+      </div>
+    </div>
   </aside>
+
   <button class="nav-backdrop" id="nav-backdrop" aria-label="Close navigation" hidden></button>
+
   <header class="app-topbar">
     <div class="app-topbar-content">
       <button class="menu-button" id="nav-toggle" aria-controls="app-navigation" aria-expanded="false" aria-label="Open navigation">☰</button>
-      <span class="topbar-caption">Workspace <span aria-hidden="true">/</span> <strong>Agent operations</strong></span>
+      <span class="topbar-caption mono">~/ai-hub <span aria-hidden="true">/</span> <strong>engineering-workspace</strong></span>
       <div class="topbar-spacer"></div>
       {% block header_actions %}
       {% block header_search %}
-      <form action="search" method="get" class="topbar-search"><label for="header-search" class="sr-only">Search pages</label><input id="header-search" name="q" type="search" placeholder="Search memory…"><span aria-hidden="true">⌕</span></form>
+      <form action="search" method="get" class="topbar-search">
+        <label for="header-search" class="sr-only">Search pages</label>
+        <input id="header-search" name="q" type="search" placeholder="Search memory…">
+        <kbd class="topbar-kbd mono" aria-hidden="true">/</kbd>
+      </form>
       {% endblock %}
-      <button type="button" id="ai-memory-logout" class="quiet-button">Log out</button>
+      <div class="hub-topbar-tools">
+        <button type="button" id="hub-my-tasks-btn" class="hub-top-btn" title="My assigned tasks across all projects" hidden>
+          <svg class="hub-btn-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m3 8.5 3 3 7-7"/></svg>
+          <span>My Tasks</span>
+          <span id="hub-my-tasks-count" class="hub-pill-count mono" hidden>0</span>
+        </button>
+        <button type="button" id="hub-api-keys-btn" class="hub-top-btn" title="Manage personal MCP API keys" hidden>
+          <svg class="hub-btn-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="5.5" cy="8" r="2.75"/><path d="M8.25 8H14m-2 0v2m-2-2v1.5"/></svg>
+          <span>API Keys</span>
+        </button>
+        <button type="button" id="hub-admin-btn" class="hub-top-btn" hidden title="Team &amp; Instance settings">
+          <svg class="hub-btn-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="5.5" cy="4.5" r="1.25" fill="currentColor"/><circle cx="10.5" cy="8" r="1.25" fill="currentColor"/><circle cx="6.5" cy="11.5" r="1.25" fill="currentColor"/></svg>
+          <span>Admin</span>
+        </button>
+        <span id="hub-user-badge" class="hub-user-chip mono" title="Current account" hidden></span>
+        <a href="login" id="hub-login-link" class="hub-top-btn" hidden>Sign in</a>
+        <a href="register" id="hub-register-link" class="hub-top-btn hub-top-btn-accent" hidden>Sign up</a>
+        <button type="button" id="ai-memory-logout" class="hub-top-btn hub-logout-btn mono" hidden title="Sign out of current account">
+          <svg class="hub-btn-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 2.5H3.5A1.5 1.5 0 0 0 2 4v8a1.5 1.5 0 0 0 1.5 1.5H6"/><path d="M10.5 11.5 14 8l-3.5-3.5M13.5 8H6"/></svg>
+          <span>Log out</span>
+        </button>
+      </div>
       {% endblock %}
-      <div class="theme-switch" role="group" aria-label="Color theme">
+      <div class="theme-switch mono" role="group" aria-label="Color theme">
         <button type="button" data-theme-choice="light" aria-pressed="false" title="Light theme">Light</button>
-        <button type="button" data-theme-choice="dark" aria-pressed="false" title="Dark theme">Dark</button>
-        <button type="button" data-theme-choice="system" aria-pressed="false" title="Follow system theme">System</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="true" title="Dark theme">Dark</button>
+        <button type="button" data-theme-choice="system" aria-pressed="false" title="Follow system theme">Auto</button>
       </div>
     </div>
   </header>
+
   <main id="main-content" tabindex="-1" class="app-content">{% block content %}{% endblock %}</main>
-  <footer class="app-footer"><span>ai-memory <span aria-hidden="true">·</span> Project memory &amp; agent operations</span>{% block footer_version %}<span>v{{ crate::templates::VERSION }}</span>{% endblock %}</footer>
+
+  <footer class="app-footer mono">
+    <span>ai-hub // multi-user engineering platform · tasks · github · git-backed markdown memory</span>
+    {% block footer_version %}<span>v{{ crate::templates::VERSION }}</span>{% endblock %}
+  </footer>
+
+  <!-- Global Modal: My Assigned Tasks -->
+  <div id="hub-modal-mytasks" class="hub-modal-backdrop" hidden>
+    <div class="hub-modal hub-modal-lg" role="dialog" aria-modal="true" aria-labelledby="hub-mytasks-title">
+      <div class="hub-modal-header">
+        <div>
+          <span class="hub-eyebrow mono">// ASSIGNED QUEUE</span>
+          <h2 id="hub-mytasks-title">My Active Tasks</h2>
+        </div>
+        <button type="button" class="hub-icon-btn mono" data-hub-close="hub-modal-mytasks" aria-label="Close">✕</button>
+      </div>
+      <div class="hub-modal-body" id="hub-mytasks-body">
+        <p class="hub-muted mono">Loading assigned tasks…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Modal: Personal MCP API Keys -->
+  <div id="hub-modal-apikeys" class="hub-modal-backdrop" hidden>
+    <div class="hub-modal hub-modal-lg" role="dialog" aria-modal="true" aria-labelledby="hub-apikeys-title">
+      <div class="hub-modal-header">
+        <div>
+          <span class="hub-eyebrow mono">// AGENT &amp; MCP CREDENTIALS</span>
+          <h2 id="hub-apikeys-title">Personal API Keys</h2>
+        </div>
+        <button type="button" class="hub-icon-btn mono" data-hub-close="hub-modal-apikeys" aria-label="Close">✕</button>
+      </div>
+      <div class="hub-modal-body">
+        <p class="hub-muted mb-3">Generate personal API tokens (<code>aim_...</code>) to authenticate Claude Code, Cursor, Codex, or OpenCode. Agents using your key inherit your project permissions and attribute tasks and memories to your user identity.</p>
+        <form id="hub-create-apikey-form" class="hub-inline-form">
+          <input id="hub-apikey-label" type="text" class="hub-input" placeholder="Key label (e.g. workstation-claude-code)" required>
+          <button type="submit" id="hub-create-apikey-btn" class="hub-btn hub-btn-primary">+ Generate Key</button>
+        </form>
+        <div id="hub-apikey-error" class="hub-alert hub-alert-danger mt-3 mono" hidden></div>
+        <div id="hub-apikey-created-box" class="hub-secret-banner" hidden>
+          <div>
+            <strong>Copy your new API key now — it will never be shown again:</strong>
+            <code id="hub-apikey-secret-val" class="hub-secret-code"></code>
+          </div>
+          <button type="button" id="hub-apikey-copy-btn" class="hub-btn hub-btn-secondary mono">Copy</button>
+        </div>
+        <div id="hub-apikeys-list" class="hub-list-box mt-4">
+          <p class="hub-muted mono">Loading keys…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Modal: Team & Instance Admin -->
+  <div id="hub-modal-admin" class="hub-modal-backdrop" hidden>
+    <div class="hub-modal hub-modal-xl" role="dialog" aria-modal="true" aria-labelledby="hub-admin-title">
+      <div class="hub-modal-header">
+        <div>
+          <span class="hub-eyebrow mono">// INSTANCE CONTROL PLANE</span>
+          <h2 id="hub-admin-title">Team &amp; Instance Administration</h2>
+        </div>
+        <button type="button" class="hub-icon-btn mono" data-hub-close="hub-modal-admin" aria-label="Close">✕</button>
+      </div>
+      <div class="hub-modal-body">
+        <div class="hub-grid-2">
+          <div class="hub-card-subtle">
+            <span class="hub-eyebrow mono">// SECURITY POLICY</span>
+            <h3 class="hub-card-subtitle">Registration &amp; Default Access</h3>
+            <p class="hub-muted mb-3">Control whether engineers can self-register at <code>/web/register</code> and the default access mode for new projects.</p>
+            <label class="hub-toggle-row">
+              <input type="checkbox" id="hub-setting-allow-reg">
+              <span>Allow open self-registration (<code>/web/register</code>)</span>
+            </label>
+            <div class="hub-field mt-3">
+              <label class="hub-label" for="hub-setting-default-access">Default new project access mode</label>
+              <select id="hub-setting-default-access" class="hub-select">
+                <option value="restricted">Restricted (Invited team members only — Recommended)</option>
+                <option value="open">Open (All authenticated users)</option>
+              </select>
+            </div>
+            <button type="button" id="hub-save-settings-btn" class="hub-btn hub-btn-primary mt-3">Save Policy</button>
+            <span id="hub-settings-saved" class="hub-status-ok mono" hidden>SAVED</span>
+          </div>
+
+          <div class="hub-card-subtle">
+            <span class="hub-eyebrow mono">// USER PROVISIONING</span>
+            <h3 class="hub-card-subtitle">Create Team Member Account</h3>
+            <p class="hub-muted mb-3">Provision an account directly for a developer on your team.</p>
+            <form id="hub-admin-create-user-form" class="hub-form-compact">
+              <div class="hub-field-row">
+                <input id="hub-new-user-username" type="text" class="hub-input mono" placeholder="username *" required>
+                <input id="hub-new-user-name" type="text" class="hub-input" placeholder="Full Name">
+              </div>
+              <div class="hub-field-row mt-2">
+                <input id="hub-new-user-email" type="email" class="hub-input mono" placeholder="dev@company.com">
+                <select id="hub-new-user-role" class="hub-select">
+                  <option value="user">Role: Member (User)</option>
+                  <option value="root">Role: Instance Admin (Root)</option>
+                </select>
+              </div>
+              <div class="hub-field-row mt-2">
+                <input id="hub-new-user-password" type="password" class="hub-input mono" placeholder="Initial password (min 12 chars) *" minlength="12" required>
+                <button type="submit" class="hub-btn hub-btn-primary">+ Create User</button>
+              </div>
+            </form>
+            <p id="hub-admin-user-msg" class="hub-muted mono mt-2"></p>
+          </div>
+        </div>
+
+        <h3 class="hub-card-subtitle mt-5">Registered Team Accounts</h3>
+        <div id="hub-admin-users-list" class="hub-table-wrap mt-2">
+          <p class="hub-muted mono">Loading users…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
   (function(){
     document.getElementById("skip-link").href=location.href.split("#")[0]+"#main-content";
@@ -59,11 +337,366 @@
     function close(){document.body.classList.remove("nav-open");toggle.setAttribute("aria-expanded","false");backdrop.hidden=true;}
     toggle.addEventListener("click",function(){var open=toggle.getAttribute("aria-expanded")!=="true";document.body.classList.toggle("nav-open",open);toggle.setAttribute("aria-expanded",String(open));backdrop.hidden=!open;if(open)nav.querySelector("a").focus();});
     backdrop.addEventListener("click",close);
-    document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("nav-open")){close();toggle.focus();}});
+    document.addEventListener("keydown",function(e){
+      if(e.key==="Escape"&&document.body.classList.contains("nav-open")){close();toggle.focus();}
+      if(e.key==="/"&&!["INPUT","TEXTAREA","SELECT"].includes((document.activeElement||{}).tagName)){
+        var s=document.getElementById("header-search");
+        if(s){e.preventDefault();s.focus();}
+      }
+    });
     nav.querySelectorAll("a[data-nav]").forEach(function(a){var path=new URL(a.href).pathname.replace(/\/$/,"");var current=location.pathname.replace(/\/$/,"");if(path===current||(a.dataset.nav==="projects"&&current.indexOf(path+"/w/")===0))a.setAttribute("aria-current","page");a.addEventListener("click",close);});
     var btn=document.getElementById("ai-memory-logout");
-    if(btn){ {% include "_js_cookie.html" %}
-      btn.addEventListener("click",function(){var base=document.querySelector('meta[name="ai-memory-base-path"]')?.content||"";var login=document.querySelector('meta[name="ai-memory-login-path"]')?.content||(base+"/web/login");fetch(base+"/auth/logout",{method:"POST",credentials:"include",headers:{"Accept":"application/json","X-CSRF-Token":decodeURIComponent(cookie("ai_memory_csrf")||"")}}).finally(function(){location.assign(login);});});
+    if(btn){
+      btn.addEventListener("click",function(){var base=document.querySelector('meta[name="ai-memory-base-path"]')?.content||"";var login=document.querySelector('meta[name="ai-memory-login-path"]')?.content||(base+"/web/login");fetch(base+"/auth/logout",{method:"POST",credentials:"include",headers:{"Accept":"application/json","X-CSRF-Token":hubCsrfToken()}}).finally(function(){location.assign(login);});});
+    }
+
+    // AI-Hub global topbar & modals
+    var basePath = document.querySelector('meta[name="ai-memory-base-path"]')?.content || "";
+    var apiBase = basePath + "/api/v1/hub";
+    window.__AI_HUB_API__ = apiBase;
+    window.__AI_HUB_ME__ = null;
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    document.querySelectorAll("[data-hub-close]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var el = document.getElementById(b.getAttribute("data-hub-close"));
+        if (el) el.hidden = true;
+      });
+    });
+
+    var userBadge = document.getElementById("hub-user-badge");
+    var adminBtn = document.getElementById("hub-admin-btn");
+    var myTasksBtn = document.getElementById("hub-my-tasks-btn");
+    var myTasksCount = document.getElementById("hub-my-tasks-count");
+    var apiKeysBtn = document.getElementById("hub-api-keys-btn");
+    var loginLink = document.getElementById("hub-login-link");
+    var regLink = document.getElementById("hub-register-link");
+    var logoutBtn = document.getElementById("ai-memory-logout");
+
+    function renderAuthState(me) {
+      if (me && me.authenticated && me.username) {
+        if (userBadge) {
+          userBadge.innerHTML = '<span class="hub-avatar-xs">' + esc(me.username.slice(0, 2).toUpperCase()) + '</span><strong>@' + esc(me.username) + '</strong>' + (me.is_root ? ' <span class="hub-role-pill hub-role-root">ROOT</span>' : '');
+          userBadge.hidden = false;
+        }
+        if (loginLink) loginLink.hidden = true;
+        if (regLink) regLink.hidden = true;
+        if (logoutBtn) logoutBtn.hidden = false;
+        if (myTasksBtn) myTasksBtn.hidden = false;
+        if (apiKeysBtn) apiKeysBtn.hidden = false;
+        if (adminBtn) adminBtn.hidden = !me.is_root;
+        if (myTasksCount) {
+          if (me.my_tasks_count > 0) {
+            myTasksCount.textContent = String(me.my_tasks_count);
+            myTasksCount.hidden = false;
+          } else {
+            myTasksCount.hidden = true;
+          }
+        }
+      } else {
+        if (userBadge) {
+          userBadge.innerHTML = '<span class="hub-muted">GUEST</span>';
+          userBadge.hidden = false;
+        }
+        if (loginLink) loginLink.hidden = false;
+        if (regLink) regLink.hidden = !(me && me.settings && me.settings.allow_registration);
+        if (logoutBtn) logoutBtn.hidden = true;
+        if (myTasksBtn) myTasksBtn.hidden = true;
+        if (apiKeysBtn) apiKeysBtn.hidden = true;
+        if (adminBtn) adminBtn.hidden = true;
+        if (myTasksCount) myTasksCount.hidden = true;
+      }
+    }
+
+    if (userBadge || loginLink || logoutBtn) {
+      fetch(apiBase + "/me", { credentials: "include" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (me) {
+          if (!me) {
+            renderAuthState(null);
+            return;
+          }
+          window.__AI_HUB_ME__ = me;
+          document.dispatchEvent(new CustomEvent("ai-hub:me", { detail: me }));
+          renderAuthState(me);
+        })
+        .catch(function () {
+          renderAuthState(null);
+        });
+    }
+
+    if (myTasksBtn) {
+      myTasksBtn.addEventListener("click", function () {
+        var modal = document.getElementById("hub-modal-mytasks");
+        var body = document.getElementById("hub-mytasks-body");
+        modal.hidden = false;
+        body.innerHTML = '<p class="hub-muted mono">Loading your tasks…</p>';
+        fetch(apiBase + "/my-tasks", { credentials: "include" })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .then(function (tasks) {
+            if (!tasks.length) {
+              body.innerHTML = '<div class="hub-empty-inline mono">No open tasks are currently assigned to you.</div>';
+              return;
+            }
+            body.innerHTML = '<div class="hub-task-mini-list">' + tasks.map(function (t) {
+              return '<div class="hub-task-mini-row">' +
+                '<span class="hub-task-key mono">' + esc(t.key || "") + '</span>' +
+                '<span class="hub-state-pill state-' + esc(t.state) + '">' + esc(t.state.replace("_", " ")) + '</span>' +
+                '<span class="hub-prio-pill prio-' + esc(t.priority) + '">' + esc(t.priority) + '</span>' +
+                '<strong class="hub-t-title">' + esc(t.title) + '</strong>' +
+                (t.due_date ? '<span class="hub-due-pill mono">DUE ' + esc(t.due_date) + '</span>' : '') +
+              '</div>';
+            }).join("") + '</div>';
+          });
+      });
+    }
+
+    function fmtTs(ts) {
+      if (!ts) return "never";
+      var d;
+      if (typeof ts === "number") {
+        d = new Date(ts > 1e13 ? Math.floor(ts / 1000) : ts);
+      } else {
+        d = new Date(ts);
+      }
+      return isNaN(d.getTime()) ? String(ts).slice(0, 10) : d.toISOString().slice(0, 10);
+    }
+
+    function loadApiKeys() {
+      var listEl = document.getElementById("hub-apikeys-list");
+      fetch(apiBase + "/me/api-keys", { credentials: "include" })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (keys) {
+          if (!keys.length) {
+            listEl.innerHTML = '<div class="hub-empty-inline mono">No personal API keys yet. Generate one above for Claude Code, Cursor, or Codex.</div>';
+            return;
+          }
+          listEl.innerHTML = '<table class="hub-table"><thead><tr class="hub-tr"><th>Label</th><th>Key ID</th><th>Preview</th><th>Created</th><th>Last Used</th><th>Status</th><th></th></tr></thead><tbody>' +
+            keys.map(function (k) {
+              var revoked = !!k.revoked_at;
+              return '<tr class="hub-tr">' +
+                '<td><strong>' + esc(k.label || "Personal Key") + '</strong></td>' +
+                '<td class="mono">' + esc((k.id || "").slice(0, 8)) + '…</td>' +
+                '<td class="mono">' + esc(k.preview || "—") + '</td>' +
+                '<td class="mono">' + esc(fmtTs(k.created_at)) + '</td>' +
+                '<td class="mono">' + esc(fmtTs(k.last_used_at)) + '</td>' +
+                '<td>' + (revoked ? '<span class="hub-badge hub-badge-danger mono">REVOKED</span>' : '<span class="hub-badge hub-badge-success mono">ACTIVE</span>') + '</td>' +
+                '<td>' + (!revoked ? '<button type="button" class="hub-btn hub-btn-danger hub-btn-xs mono" data-revoke-key="' + esc(k.id) + '">Revoke</button>' : '') + '</td>' +
+              '</tr>';
+            }).join("") + '</tbody></table>';
+          listEl.querySelectorAll("[data-revoke-key]").forEach(function (rb) {
+            rb.addEventListener("click", function () {
+              var kid = rb.getAttribute("data-revoke-key");
+              if (!confirm("Revoke this API key? Agents using it will immediately lose access.")) return;
+              fetch(apiBase + "/me/api-keys/" + encodeURIComponent(kid), {
+                method: "DELETE",
+                credentials: "include",
+                headers: { "X-CSRF-Token": hubCsrfToken(), "Accept": "application/json" }
+              }).then(function () { loadApiKeys(); });
+            });
+          });
+        })
+        .catch(function () {
+          listEl.innerHTML = '<div class="hub-error-inline mono">Failed to load API keys.</div>';
+        });
+    }
+
+    if (apiKeysBtn) {
+      apiKeysBtn.addEventListener("click", function () {
+        document.getElementById("hub-modal-apikeys").hidden = false;
+        document.getElementById("hub-apikey-created-box").hidden = true;
+        var errEl = document.getElementById("hub-apikey-error");
+        if (errEl) errEl.hidden = true;
+        loadApiKeys();
+      });
+    }
+
+    var createKeyForm = document.getElementById("hub-create-apikey-form");
+    if (createKeyForm) {
+      createKeyForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var labelInput = document.getElementById("hub-apikey-label");
+        var btn = document.getElementById("hub-create-apikey-btn") || createKeyForm.querySelector("button[type=submit]");
+        var errEl = document.getElementById("hub-apikey-error");
+        var origText = btn ? btn.textContent : "+ Generate Key";
+        if (errEl) errEl.hidden = true;
+        if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+
+        var csrf = hubCsrfToken();
+        fetch(apiBase + "/me/api-keys", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({ label: labelInput.value.trim() })
+        })
+          .then(function (r) {
+            return r.json().then(function (data) {
+              return { ok: r.ok, status: r.status, data: data };
+            }).catch(function () {
+              return { ok: r.ok, status: r.status, data: null };
+            });
+          })
+          .then(function (res) {
+            if (btn) { btn.disabled = false; btn.textContent = origText; }
+            if (res.ok && res.data && res.data.token) {
+              var box = document.getElementById("hub-apikey-created-box");
+              var val = document.getElementById("hub-apikey-secret-val");
+              if (val) val.textContent = res.data.token;
+              if (box) box.hidden = false;
+              labelInput.value = "";
+              loadApiKeys();
+            } else {
+              var msg = (res.data && (res.data.error || res.data.message)) || ("Error (" + res.status + "): Could not generate API key");
+              if (errEl) {
+                errEl.textContent = msg;
+                errEl.hidden = false;
+              } else {
+                alert(msg);
+              }
+            }
+          })
+          .catch(function (err) {
+            if (btn) { btn.disabled = false; btn.textContent = origText; }
+            var msg = "Network error: " + (err.message || String(err));
+            if (errEl) {
+              errEl.textContent = msg;
+              errEl.hidden = false;
+            } else {
+              alert(msg);
+            }
+          });
+      });
+    }
+
+    var copyKeyBtn = document.getElementById("hub-apikey-copy-btn");
+    if (copyKeyBtn) {
+      copyKeyBtn.addEventListener("click", function () {
+        var val = (document.getElementById("hub-apikey-secret-val")?.textContent || "").trim();
+        if (val) {
+          hubCopyText(val, copyKeyBtn);
+        }
+      });
+    }
+
+    function loadAdminModal() {
+      fetch(apiBase + "/settings", { credentials: "include" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (st) {
+          if (!st) return;
+          document.getElementById("hub-setting-allow-reg").checked = !!st.allow_registration;
+          document.getElementById("hub-setting-default-access").value = st.default_project_access || "restricted";
+        });
+      var ulist = document.getElementById("hub-admin-users-list");
+      fetch(apiBase + "/users", { credentials: "include" })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (users) {
+          ulist.innerHTML = '<table class="hub-table"><thead><tr class="hub-tr"><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+            users.map(function (u) {
+              return '<tr class="hub-tr">' +
+                '<td class="mono"><strong>@' + esc(u.username) + '</strong></td>' +
+                '<td>' + esc(u.name || "—") + '</td>' +
+                '<td class="mono">' + esc(u.email || "—") + '</td>' +
+                '<td><span class="hub-role-pill ' + (u.role === "root" ? "hub-role-root" : "") + ' mono">' + esc(u.role.toUpperCase()) + '</span></td>' +
+                '<td>' + (u.disabled ? '<span class="hub-badge hub-badge-danger mono">DISABLED</span>' : '<span class="hub-badge hub-badge-success mono">ACTIVE</span>') + '</td>' +
+                '<td>' +
+                  '<button type="button" class="hub-btn hub-btn-secondary hub-btn-xs mono" data-toggle-role="' + esc(u.username) + '" data-cur-role="' + esc(u.role) + '">' + (u.role === "root" ? "Demote" : "Make Admin") + '</button> ' +
+                  '<button type="button" class="hub-btn hub-btn-danger hub-btn-xs mono" data-toggle-disable="' + esc(u.username) + '" data-cur-dis="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button>' +
+                '</td>' +
+              '</tr>';
+            }).join("") + '</tbody></table>';
+          ulist.querySelectorAll("[data-toggle-role]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              var uname = b.getAttribute("data-toggle-role");
+              var nextRole = b.getAttribute("data-cur-role") === "root" ? "user" : "root";
+              fetch(apiBase + "/users/" + encodeURIComponent(uname), {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role: nextRole })
+              }).then(function () { loadAdminModal(); });
+            });
+          });
+          ulist.querySelectorAll("[data-toggle-disable]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              var uname = b.getAttribute("data-toggle-disable");
+              var nextDis = b.getAttribute("data-cur-dis") !== "1";
+              fetch(apiBase + "/users/" + encodeURIComponent(uname), {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ disabled: nextDis })
+              }).then(function () { loadAdminModal(); });
+            });
+          });
+        });
+    }
+
+    if (adminBtn) {
+      adminBtn.addEventListener("click", function () {
+        document.getElementById("hub-modal-admin").hidden = false;
+        loadAdminModal();
+      });
+    }
+
+    var saveSettingsBtn = document.getElementById("hub-save-settings-btn");
+    if (saveSettingsBtn) {
+      saveSettingsBtn.addEventListener("click", function () {
+        fetch(apiBase + "/settings", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            allow_registration: document.getElementById("hub-setting-allow-reg").checked,
+            default_project_access: document.getElementById("hub-setting-default-access").value
+          })
+        }).then(function (r) {
+          if (r.ok) {
+            var s = document.getElementById("hub-settings-saved");
+            s.hidden = false;
+            setTimeout(function () { s.hidden = true; }, 2000);
+          }
+        });
+      });
+    }
+
+    var createUserForm = document.getElementById("hub-admin-create-user-form");
+    if (createUserForm) {
+      createUserForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var msg = document.getElementById("hub-admin-user-msg");
+        fetch(apiBase + "/users", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: document.getElementById("hub-new-user-username").value.trim(),
+            name: document.getElementById("hub-new-user-name").value.trim() || null,
+            email: document.getElementById("hub-new-user-email").value.trim() || null,
+            role: document.getElementById("hub-new-user-role").value,
+            password: document.getElementById("hub-new-user-password").value
+          })
+        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (!res.ok) {
+              msg.textContent = "Error: " + ((res.j && res.j.error) || "Failed");
+              return;
+            }
+            msg.textContent = "Account @" + res.j.username + " provisioned.";
+            createUserForm.reset();
+            loadAdminModal();
+          });
+      });
     }
   })();
   </script>

@@ -1,0 +1,1666 @@
+<section id="hub-project-workspace" class="hub-workspace" aria-label="Project engineering hub" data-workspace="{{ workspace }}" data-project="{{ project }}">
+  <!-- Top Hub Bar: Project badges + View Mode Switcher + Primary Actions -->
+  <div class="hub-CommandBar">
+    <div class="hub-CommandBar-left">
+      <span id="hub-proj-prefix-pill" class="hub-prefix-badge mono">PRJ</span>
+      <span id="hub-proj-access-pill" class="hub-badge hub-badge-accent mono">TEAM // RESTRICTED</span>
+      <span id="hub-proj-role-pill" class="hub-badge hub-badge-neutral mono">ROLE: MEMBER</span>
+      <span id="hub-proj-progress-pill" class="hub-muted-sm mono">0 / 0 TASKS DONE</span>
+    </div>
+    <div class="hub-CommandBar-actions">
+      <button type="button" id="hub-btn-new-task" class="hub-btn hub-btn-primary mono">
+        + New Task
+      </button>
+      <button type="button" id="hub-btn-new-wiki" class="hub-btn hub-btn-secondary mono">
+        + Wiki Page (.md)
+      </button>
+      <button type="button" id="hub-btn-sync-md" class="hub-btn hub-btn-secondary mono" title="Compile all project tasks into tasks/board.md and commit to the Git-backed Wiki">
+        Commit Board → MD
+      </button>
+    </div>
+  </div>
+
+  <!-- Hub Mode Navigation -->
+  <div class="hub-mode-nav" role="navigation" aria-label="Hub workspace views">
+    <button type="button" class="hub-mode-btn active" data-hub-mode="board">
+      <svg class="hub-tab-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2" width="3.5" height="12" rx="0.75"/><rect x="6.25" y="2" width="3.5" height="8" rx="0.75"/><rect x="11" y="2" width="3.5" height="10" rx="0.75"/></svg>
+      <span>Kanban Board</span> <span id="hub-nav-count-tasks" class="hub-mode-count mono">0</span>
+    </button>
+    <button type="button" class="hub-mode-btn" data-hub-mode="list">
+      <svg class="hub-tab-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg>
+      <span>List View</span>
+    </button>
+    <button type="button" class="hub-mode-btn" data-hub-mode="modules">
+      <svg class="hub-tab-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 1.5l6 3.25v6.5L8 14.5l-6-3.25v-6.5L8 1.5z"/><path d="M2 4.75L8 8l6-3.25M8 8v6.5"/></svg>
+      <span>Modules &amp; Cycles</span> <span id="hub-nav-count-modules" class="hub-mode-count mono">0</span>
+    </button>
+    <button type="button" class="hub-mode-btn" data-hub-mode="github">
+      <svg class="hub-tab-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="4" cy="3.5" r="1.75"/><circle cx="4" cy="12.5" r="1.75"/><circle cx="12" cy="12.5" r="1.75"/><path d="M4 5.25v5.5M12 10.75V7.5a2 2 0 0 0-2-2H6"/></svg>
+      <span>GitHub Issues &amp; PRs</span> <span id="hub-nav-count-github" class="hub-mode-count mono">0</span>
+    </button>
+    <button type="button" class="hub-mode-btn" data-hub-mode="team">
+      <svg class="hub-tab-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="5.5" r="2.25"/><path d="M2 13c0-2 1.8-3.5 4-3.5s4 1.5 4 3.5"/><circle cx="11.5" cy="6" r="1.75"/><path d="M11.5 9.5c1.5 0 2.75 1.1 2.75 2.75"/></svg>
+      <span>Team &amp; Access</span> <span id="hub-nav-count-team" class="hub-mode-count mono">0</span>
+    </button>
+    <button type="button" class="hub-mode-btn" data-hub-mode="memory">
+      <svg class="hub-tab-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 2.5h7l3 3V13.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z"/><path d="M5 8h6M5 11h4"/></svg>
+      <span>Memory Wiki &amp; Agent Ops</span>
+    </button>
+  </div>
+
+  <div id="hub-toast" class="hub-toast" hidden></div>
+
+  <!-- Shared Task Filter Bar (Visible on Board & List views) -->
+  <div id="hub-task-filters" class="hub-filter-bar">
+    <input id="hub-filter-q" type="search" class="hub-input hub-filter-search" placeholder="Filter tasks by title, key (e.g. AIH-1), or description…">
+    <select id="hub-filter-state" class="hub-select hub-select-sm" aria-label="Filter by state">
+      <option value="">All States</option>
+      <option value="backlog">Backlog</option>
+      <option value="todo">Todo</option>
+      <option value="in_progress">In Progress</option>
+      <option value="in_review">In Review</option>
+      <option value="done">Done</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <select id="hub-filter-priority" class="hub-select hub-select-sm" aria-label="Filter by priority">
+      <option value="">All Priorities</option>
+      <option value="urgent">Urgent</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+      <option value="none">None</option>
+    </select>
+    <select id="hub-filter-assignee" class="hub-select hub-select-sm" aria-label="Filter by assignee">
+      <option value="">All Assignees</option>
+    </select>
+    <select id="hub-filter-module" class="hub-select hub-select-sm" aria-label="Filter by module">
+      <option value="">All Modules</option>
+    </select>
+    <select id="hub-filter-cycle" class="hub-select hub-select-sm" aria-label="Filter by cycle">
+      <option value="">All Cycles</option>
+    </select>
+    <select id="hub-filter-label" class="hub-select hub-select-sm" aria-label="Filter by label">
+      <option value="">All Labels</option>
+    </select>
+  </div>
+
+  <!-- VIEW 1: KANBAN BOARD -->
+  <div id="hub-view-board" class="hub-view-pane">
+    <div class="hub-kanban" id="hub-kanban-columns">
+      <!-- Populated dynamically with 6 columns: backlog, todo, in_progress, in_review, done, cancelled -->
+    </div>
+  </div>
+
+  <!-- VIEW 2: PLANE-STYLE TASK LIST -->
+  <div id="hub-view-list" class="hub-view-pane" hidden>
+    <div class="hub-table-wrap">
+      <table class="hub-table hub-task-table">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Title</th>
+            <th>State</th>
+            <th>Priority</th>
+            <th>Assignees</th>
+            <th>Module</th>
+            <th>Cycle</th>
+            <th>Timeline (Start → Due)</th>
+            <th>Pts</th>
+            <th>Created By</th>
+          </tr>
+        </thead>
+        <tbody id="hub-list-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- VIEW 3: MODULES, CYCLES & LABELS -->
+  <div id="hub-view-modules" class="hub-view-pane" hidden>
+    <div class="hub-grid-2">
+      <!-- Modules -->
+      <div class="hub-card-subtle">
+        <div class="hub-section-header">
+          <div>
+            <span class="hub-eyebrow">PLANE MODULES</span>
+            <h3 class="hub-card-subtitle">Feature Modules &amp; Initiatives</h3>
+          </div>
+        </div>
+        <form id="hub-create-module-form" class="hub-form-compact mb-4">
+          <div class="hub-field-row">
+            <input id="hub-mod-name" type="text" class="hub-input" placeholder="Module name (e.g. Auth &amp; Multi-Tenancy) *" required>
+            <select id="hub-mod-status" class="hub-select">
+              <option value="planned">Status: Planned</option>
+              <option value="in_progress" selected>Status: In Progress</option>
+              <option value="paused">Status: Paused</option>
+              <option value="completed">Status: Completed</option>
+              <option value="cancelled">Status: Cancelled</option>
+            </select>
+          </div>
+          <div class="hub-field-row mt-2">
+            <input id="hub-mod-lead" type="text" class="hub-input" placeholder="Lead username (optional)">
+            <input id="hub-mod-start" type="date" class="hub-input" title="Start date">
+            <input id="hub-mod-target" type="date" class="hub-input" title="Target date">
+          </div>
+          <div class="hub-field-row mt-2">
+            <input id="hub-mod-desc" type="text" class="hub-input" placeholder="Module description">
+            <button type="submit" class="hub-btn hub-btn-primary">+ Add Module</button>
+          </div>
+        </form>
+        <div id="hub-modules-list" class="hub-stack"></div>
+      </div>
+
+      <!-- Cycles & Labels -->
+      <div class="hub-stack">
+        <div class="hub-card-subtle">
+          <div class="hub-section-header">
+            <div>
+              <span class="hub-eyebrow">SPRINTS &amp; ITERATIONS</span>
+              <h3 class="hub-card-subtitle">Cycles</h3>
+            </div>
+          </div>
+          <form id="hub-create-cycle-form" class="hub-form-compact mb-4">
+            <div class="hub-field-row">
+              <input id="hub-cyc-name" type="text" class="hub-input" placeholder="Cycle name (e.g. Sprint 14) *" required>
+              <select id="hub-cyc-status" class="hub-select">
+                <option value="upcoming">Upcoming</option>
+                <option value="active" selected>Active</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+            <div class="hub-field-row mt-2">
+              <input id="hub-cyc-start" type="date" class="hub-input" title="Start date">
+              <input id="hub-cyc-end" type="date" class="hub-input" title="End date">
+              <button type="submit" class="hub-btn hub-btn-primary">+ Add Cycle</button>
+            </div>
+          </form>
+          <div id="hub-cycles-list" class="hub-stack"></div>
+        </div>
+
+        <div class="hub-card-subtle">
+          <div class="hub-section-header">
+            <div>
+              <span class="hub-eyebrow">TAXONOMY</span>
+              <h3 class="hub-card-subtitle">Task Labels</h3>
+            </div>
+          </div>
+          <form id="hub-create-label-form" class="hub-inline-form mb-3">
+            <input id="hub-lbl-name" type="text" class="hub-input" placeholder="Label name (e.g. bug, security, ai-agent)" required>
+            <input id="hub-lbl-color" type="color" class="hub-color-input" value="#6366f1" title="Label color">
+            <button type="submit" class="hub-btn hub-btn-secondary">+ Label</button>
+          </form>
+          <div id="hub-labels-list" class="hub-chips-wrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 4: GITHUB REPOSITORIES, ISSUES & PRS -->
+  <div id="hub-view-github" class="hub-view-pane" hidden>
+    <div class="hub-grid-sidebar">
+      <!-- Connected Repos Sidebar -->
+      <div class="hub-card-subtle">
+        <span class="hub-eyebrow">CONNECTED REPOSITORIES</span>
+        <h3 class="hub-card-subtitle mb-2">GitHub Integration</h3>
+        <p class="hub-muted mb-3">Attach GitHub repositories to sync Issues &amp; Pull Requests, create issues directly, or import them into Plane tasks.</p>
+        <form id="hub-add-gh-repo-form" class="hub-form-compact">
+          <div class="hub-field">
+            <label class="hub-label" for="hub-gh-full-name">Repository (<code>owner/repo</code>) *</label>
+            <input id="hub-gh-full-name" type="text" class="hub-input mono" placeholder="acme/backend-service" required>
+          </div>
+          <div class="hub-field mt-2">
+            <label class="hub-label" for="hub-gh-token">GitHub Personal Access Token (optional for public repos)</label>
+            <input id="hub-gh-token" type="password" class="hub-input mono" placeholder="ghp_... or github_pat_...">
+          </div>
+          <button type="submit" class="hub-btn hub-btn-primary hub-btn-full mt-3">+ Attach Repository</button>
+        </form>
+        <div id="hub-gh-repos-list" class="hub-stack mt-4"></div>
+      </div>
+
+      <!-- Issues & PRs Main Panel -->
+      <div class="hub-card-subtle">
+        <div class="hub-section-header">
+          <div>
+            <span class="hub-eyebrow">SYNCHRONIZED ITEMS</span>
+            <h3 class="hub-card-subtitle">GitHub Issues &amp; Pull Requests</h3>
+          </div>
+          <div class="hub-heading-actions">
+            <button type="button" id="hub-gh-open-new-issue" class="hub-btn hub-btn-secondary">+ New GitHub Issue</button>
+            <button type="button" id="hub-gh-sync-btn" class="hub-btn hub-btn-primary">↻ Sync from GitHub</button>
+          </div>
+        </div>
+        <div class="hub-filter-bar mt-3 mb-3">
+          <select id="hub-gh-filter-kind" class="hub-select hub-select-sm">
+            <option value="">Issues &amp; Pull Requests</option>
+            <option value="issue">Issues Only</option>
+            <option value="pr">Pull Requests Only</option>
+          </select>
+          <select id="hub-gh-filter-state" class="hub-select hub-select-sm">
+            <option value="">All States</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed / Merged</option>
+          </select>
+        </div>
+        <div id="hub-gh-items-list" class="hub-stack"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 5: TEAM MEMBERS & ACCESS CONTROL -->
+  <div id="hub-view-team" class="hub-view-pane" hidden>
+    <div class="hub-grid-2">
+      <div class="hub-card-subtle">
+        <span class="hub-eyebrow">PROJECT COLLABORATORS</span>
+        <h3 class="hub-card-subtitle mb-2">Invite &amp; Manage Team Members</h3>
+        <p class="hub-muted mb-3">Grant teammates access to view or edit this project's memory wiki, task board, and GitHub links.</p>
+        <form id="hub-invite-member-form" class="hub-inline-form mb-4">
+          <input id="hub-invite-username" type="text" class="hub-input" placeholder="Username (e.g. maria)" list="hub-all-users-datalist" required>
+          <datalist id="hub-all-users-datalist"></datalist>
+          <select id="hub-invite-role" class="hub-select">
+            <option value="write" selected>Role: Write (Tasks &amp; Memory)</option>
+            <option value="admin">Role: Admin (Manage Team &amp; Settings)</option>
+            <option value="read">Role: Read-Only Viewer</option>
+            <option value="owner">Role: Project Owner</option>
+          </select>
+          <button type="submit" class="hub-btn hub-btn-primary">+ Grant Access</button>
+        </form>
+        <p id="hub-team-msg" class="hub-muted mb-2"></p>
+        <div id="hub-members-table-wrap" class="hub-table-wrap"></div>
+      </div>
+
+      <div class="hub-card-subtle">
+        <span class="hub-eyebrow">PROJECT CONFIGURATION</span>
+        <h3 class="hub-card-subtitle mb-2">Project Settings &amp; Visibility</h3>
+        <form id="hub-project-settings-form" class="hub-form">
+          <div class="hub-field-row">
+            <div class="hub-field">
+              <label class="hub-label" for="hub-set-prefix">Task Key Prefix</label>
+              <input id="hub-set-prefix" type="text" class="hub-input mono" maxlength="8" required>
+            </div>
+            <div class="hub-field">
+              <label class="hub-label" for="hub-set-access">Access Mode</label>
+              <select id="hub-set-access" class="hub-select">
+                <option value="restricted">Restricted (Invited members only)</option>
+                <option value="open">Open (All signed-in company users)</option>
+              </select>
+            </div>
+          </div>
+          <div class="hub-field">
+            <label class="hub-label" for="hub-set-desc">Project Description</label>
+            <textarea id="hub-set-desc" class="hub-textarea" rows="3"></textarea>
+          </div>
+          <button type="submit" class="hub-btn hub-btn-primary">Save Project Settings</button>
+          <span id="hub-proj-settings-saved" class="hub-status-ok" hidden>Saved!</span>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE-OVER DRAWER: TASK DETAIL & EDITOR -->
+<div id="hub-task-drawer-backdrop" class="hub-drawer-backdrop" hidden>
+  <aside id="hub-task-drawer" class="hub-drawer" role="dialog" aria-modal="true" aria-labelledby="hub-drawer-title">
+    <div class="hub-drawer-header">
+      <div class="hub-drawer-id-row">
+        <span id="hub-drawer-key" class="hub-task-key mono">AIH-1</span>
+        <span id="hub-drawer-creator" class="hub-muted-sm"></span>
+      </div>
+      <div class="hub-heading-actions">
+        <button type="button" id="hub-drawer-delete-btn" class="hub-btn hub-btn-danger hub-btn-xs">Delete Task</button>
+        <button type="button" id="hub-drawer-close-btn" class="hub-icon-btn" aria-label="Close task drawer">✕</button>
+      </div>
+    </div>
+
+    <div class="hub-drawer-body">
+      <div class="hub-drawer-main">
+        <input id="hub-drawer-title" type="text" class="hub-drawer-title-input" placeholder="Task title">
+        <div class="hub-field mt-3">
+          <label class="hub-label" for="hub-drawer-desc">Description (Markdown)</label>
+          <textarea id="hub-drawer-desc" class="hub-textarea mono" rows="6" placeholder="Write acceptance criteria, architecture notes, or context…"></textarea>
+        </div>
+        <div class="hub-inline-actions mt-2">
+          <button type="button" id="hub-drawer-save-btn" class="hub-btn hub-btn-primary">Save Changes</button>
+          <span id="hub-drawer-saved-indicator" class="hub-status-ok" hidden>Saved!</span>
+        </div>
+
+        <!-- Subtasks -->
+        <div class="hub-drawer-section">
+          <h4 class="hub-drawer-section-title">Subtasks</h4>
+          <div id="hub-drawer-subtasks" class="hub-stack mb-2"></div>
+          <form id="hub-drawer-subtask-form" class="hub-inline-form">
+            <input id="hub-drawer-subtask-title" type="text" class="hub-input hub-input-sm" placeholder="Add a subtask…" required>
+            <button type="submit" class="hub-btn hub-btn-secondary hub-btn-xs">+ Subtask</button>
+          </form>
+        </div>
+
+        <!-- Linked Wiki Memory Pages -->
+        <div class="hub-drawer-section">
+          <h4 class="hub-drawer-section-title">Linked Wiki Memory Pages (.md)</h4>
+          <div id="hub-drawer-wiki-links" class="hub-chips-wrap mb-2"></div>
+          <form id="hub-drawer-wiki-form" class="hub-inline-form">
+            <input id="hub-drawer-wiki-path" type="text" class="hub-input hub-input-sm mono" placeholder="e.g. decisions/auth.md or tasks/board.md" required>
+            <button type="submit" class="hub-btn hub-btn-secondary hub-btn-xs">+ Link Page</button>
+          </form>
+        </div>
+
+        <!-- Linked GitHub Issues & PRs -->
+        <div class="hub-drawer-section">
+          <h4 class="hub-drawer-section-title">Linked GitHub Issues &amp; PRs</h4>
+          <div id="hub-drawer-gh-links" class="hub-stack mb-2"></div>
+          <form id="hub-drawer-gh-form" class="hub-inline-form">
+            <select id="hub-drawer-gh-select" class="hub-select hub-select-sm">
+              <option value="">Select a synced GitHub Issue or PR…</option>
+            </select>
+            <button type="submit" class="hub-btn hub-btn-secondary hub-btn-xs">+ Link GitHub Item</button>
+          </form>
+        </div>
+
+        <!-- Comments -->
+        <div class="hub-drawer-section">
+          <h4 class="hub-drawer-section-title">Comments &amp; Agent Updates</h4>
+          <div id="hub-drawer-comments" class="hub-comments-list mb-3"></div>
+          <form id="hub-drawer-comment-form" class="hub-form-compact">
+            <textarea id="hub-drawer-comment-body" class="hub-textarea" rows="3" placeholder="Leave a comment or progress note…" required></textarea>
+            <button type="submit" class="hub-btn hub-btn-primary hub-btn-xs mt-2">Post Comment</button>
+          </form>
+        </div>
+
+        <!-- Activity Timeline -->
+        <div class="hub-drawer-section">
+          <h4 class="hub-drawer-section-title">Activity Log</h4>
+          <div id="hub-drawer-activities" class="hub-activity-list"></div>
+        </div>
+      </div>
+
+      <!-- Properties Sidebar inside Drawer -->
+      <div class="hub-drawer-props">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-state">State</label>
+          <select id="hub-prop-state" class="hub-select">
+            <option value="backlog">Backlog</option>
+            <option value="todo">Todo</option>
+            <option value="in_progress">In Progress</option>
+            <option value="in_review">In Review</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-priority">Priority</label>
+          <select id="hub-prop-priority" class="hub-select">
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label">Assignees</label>
+          <div id="hub-prop-assignees" class="hub-check-pills"></div>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-module">Module</label>
+          <select id="hub-prop-module" class="hub-select">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-cycle">Cycle / Sprint</label>
+          <select id="hub-prop-cycle" class="hub-select">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-start">Start Date</label>
+          <input id="hub-prop-start" type="date" class="hub-input">
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-due">Due Date</label>
+          <input id="hub-prop-due" type="date" class="hub-input">
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-prop-estimate">Estimate (Points)</label>
+          <input id="hub-prop-estimate" type="number" min="0" max="100" class="hub-input" placeholder="e.g. 3">
+        </div>
+        <div class="hub-field">
+          <label class="hub-label">Labels</label>
+          <div id="hub-prop-labels" class="hub-check-pills"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- MODAL: CREATE NEW TASK -->
+<div id="hub-modal-new-task" class="hub-modal-backdrop" hidden>
+  <div class="hub-modal hub-modal-lg" role="dialog" aria-modal="true" aria-labelledby="hub-new-task-title">
+    <div class="hub-modal-header">
+      <div>
+        <span class="hub-eyebrow">PLANE TASK TRACKER</span>
+        <h2 id="hub-new-task-title">Create Task</h2>
+      </div>
+      <button type="button" class="hub-icon-btn" data-hub-close="hub-modal-new-task" aria-label="Close">✕</button>
+    </div>
+    <form id="hub-new-task-form" class="hub-modal-body hub-form">
+      <div class="hub-field">
+        <label class="hub-label" for="hub-nt-title">Task Title <span class="hub-req">*</span></label>
+        <input id="hub-nt-title" type="text" class="hub-input" placeholder="e.g. Implement OAuth2 token refresh flow" required>
+      </div>
+      <div class="hub-field">
+        <label class="hub-label" for="hub-nt-desc">Description (Markdown)</label>
+        <textarea id="hub-nt-desc" class="hub-textarea mono" rows="4" placeholder="Context, requirements, and links to wiki pages…"></textarea>
+      </div>
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-state">State</label>
+          <select id="hub-nt-state" class="hub-select">
+            <option value="backlog">Backlog</option>
+            <option value="todo" selected>Todo</option>
+            <option value="in_progress">In Progress</option>
+            <option value="in_review">In Review</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-priority">Priority</label>
+          <select id="hub-nt-priority" class="hub-select">
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-estimate">Estimate (Pts)</label>
+          <input id="hub-nt-estimate" type="number" min="0" class="hub-input" placeholder="e.g. 5">
+        </div>
+      </div>
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-module">Module</label>
+          <select id="hub-nt-module" class="hub-select"><option value="">No Module</option></select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-cycle">Cycle / Sprint</label>
+          <select id="hub-nt-cycle" class="hub-select"><option value="">No Cycle</option></select>
+        </div>
+      </div>
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-start">Start Date</label>
+          <input id="hub-nt-start" type="date" class="hub-input">
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-due">Due Date</label>
+          <input id="hub-nt-due" type="date" class="hub-input">
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nt-assignees">Assignees (comma usernames)</label>
+          <input id="hub-nt-assignees" type="text" class="hub-input" placeholder="e.g. alex, maria">
+        </div>
+      </div>
+      <div class="hub-modal-footer">
+        <button type="button" class="hub-btn hub-btn-secondary" data-hub-close="hub-modal-new-task">Cancel</button>
+        <button type="submit" class="hub-btn hub-btn-primary">Create Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: CREATE NEW WIKI PAGE (GIT-BACKED MD) -->
+<div id="hub-modal-new-wiki" class="hub-modal-backdrop" hidden>
+  <div class="hub-modal hub-modal-xl" role="dialog" aria-modal="true" aria-labelledby="hub-new-wiki-title">
+    <div class="hub-modal-header">
+      <div>
+        <span class="hub-eyebrow">GIT-BACKED MEMORY WIKI</span>
+        <h2 id="hub-new-wiki-title">Write Markdown Memory Page</h2>
+      </div>
+      <button type="button" class="hub-icon-btn" data-hub-close="hub-modal-new-wiki" aria-label="Close">✕</button>
+    </div>
+    <form id="hub-new-wiki-form" class="hub-modal-body hub-form">
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nw-path">File Path (<code>.md</code>) <span class="hub-req">*</span></label>
+          <input id="hub-nw-path" type="text" class="hub-input mono" placeholder="decisions/architecture.md" required>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nw-title">Title <span class="hub-req">*</span></label>
+          <input id="hub-nw-title" type="text" class="hub-input" placeholder="Architecture &amp; Multi-Tenancy" required>
+        </div>
+      </div>
+      <div class="hub-field-row">
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nw-kind">Kind</label>
+          <select id="hub-nw-kind" class="hub-select">
+            <option value="fact">fact</option>
+            <option value="decision">decision</option>
+            <option value="convention">convention</option>
+            <option value="runbook">runbook</option>
+            <option value="summary">summary</option>
+          </select>
+        </div>
+        <div class="hub-field">
+          <label class="hub-label" for="hub-nw-tier">Memory Tier</label>
+          <select id="hub-nw-tier" class="hub-select">
+            <option value="semantic" selected>semantic (Durable knowledge)</option>
+            <option value="procedural">procedural (Rules &amp; workflows)</option>
+            <option value="episodic">episodic (Session/event notes)</option>
+          </select>
+        </div>
+      </div>
+      <div class="hub-field">
+        <label class="hub-label" for="hub-nw-body">Markdown Content <span class="hub-req">*</span></label>
+        <textarea id="hub-nw-body" class="hub-textarea mono" rows="12" placeholder="# Heading&#10;&#10;Write Markdown knowledge here. Every save commits to the project's Git wiki and indexes into FTS5." required></textarea>
+      </div>
+      <label class="hub-toggle-row">
+        <input type="checkbox" id="hub-nw-pinned">
+        <span>Pin page to always surface in project briefings</span>
+      </label>
+      <div class="hub-modal-footer">
+        <button type="button" class="hub-btn hub-btn-secondary" data-hub-close="hub-modal-new-wiki">Cancel</button>
+        <button type="submit" class="hub-btn hub-btn-primary">Commit Page to Wiki</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: CREATE GITHUB ISSUE -->
+<div id="hub-modal-gh-issue" class="hub-modal-backdrop" hidden>
+  <div class="hub-modal hub-modal-lg" role="dialog" aria-modal="true" aria-labelledby="hub-gh-issue-title">
+    <div class="hub-modal-header">
+      <div>
+        <span class="hub-eyebrow">GITHUB API INTEGRATION</span>
+        <h2 id="hub-gh-issue-title">Create Issue on GitHub</h2>
+      </div>
+      <button type="button" class="hub-icon-btn" data-hub-close="hub-modal-gh-issue" aria-label="Close">✕</button>
+    </div>
+    <form id="hub-gh-issue-form" class="hub-modal-body hub-form">
+      <div class="hub-field">
+        <label class="hub-label" for="hub-ghi-repo">Repository <span class="hub-req">*</span></label>
+        <select id="hub-ghi-repo" class="hub-select" required></select>
+      </div>
+      <div class="hub-field">
+        <label class="hub-label" for="hub-ghi-title">Issue Title <span class="hub-req">*</span></label>
+        <input id="hub-ghi-title" type="text" class="hub-input" required>
+      </div>
+      <div class="hub-field">
+        <label class="hub-label" for="hub-ghi-body">Body (Markdown)</label>
+        <textarea id="hub-ghi-body" class="hub-textarea mono" rows="6"></textarea>
+      </div>
+      <div class="hub-modal-footer">
+        <button type="button" class="hub-btn hub-btn-secondary" data-hub-close="hub-modal-gh-issue">Cancel</button>
+        <button type="submit" class="hub-btn hub-btn-primary">Publish to GitHub</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var basePath = document.querySelector('meta[name="ai-memory-base-path"]')?.content || "";
+  var rootEl = document.getElementById("hub-project-workspace");
+  var ws = rootEl ? (rootEl.getAttribute("data-workspace") || "") : "";
+  var proj = rootEl ? (rootEl.getAttribute("data-project") || "") : "";
+  var projApi = basePath + "/api/v1/hub/projects/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj);
+
+  var STATE_COLS = [
+    { key: "backlog", label: "Backlog", icon: "◌" },
+    { key: "todo", label: "Todo", icon: "○" },
+    { key: "in_progress", label: "In Progress", icon: "◐" },
+    { key: "in_review", label: "In Review", icon: "◕" },
+    { key: "done", label: "Done", icon: "●" },
+    { key: "cancelled", label: "Cancelled", icon: "⊘" }
+  ];
+
+  var hubData = {
+    project: null,
+    role: "read",
+    tasks: [],
+    modules: [],
+    cycles: [],
+    labels: [],
+    members: [],
+    repos: [],
+    ghItems: [],
+    activeTask: null
+  };
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function showToast(msg) {
+    var t = document.getElementById("hub-toast");
+    if (!t) return;
+    t.innerHTML = msg;
+    t.hidden = false;
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.hidden = true; }, 4500);
+  }
+
+  // Mode Switching
+  var modeBtns = Array.from(document.querySelectorAll("[data-hub-mode]"));
+  var panes = {
+    board: document.getElementById("hub-view-board"),
+    list: document.getElementById("hub-view-list"),
+    modules: document.getElementById("hub-view-modules"),
+    github: document.getElementById("hub-view-github"),
+    team: document.getElementById("hub-view-team")
+  };
+  var filterBar = document.getElementById("hub-task-filters");
+  var memoryShell = document.getElementById("hub-memory-ops-shell");
+
+  function switchMode(mode) {
+    modeBtns.forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-hub-mode") === mode);
+    });
+    Object.keys(panes).forEach(function (k) {
+      if (panes[k]) panes[k].hidden = (k !== mode);
+    });
+    if (filterBar) {
+      filterBar.hidden = !(mode === "board" || mode === "list");
+    }
+    if (memoryShell) {
+      memoryShell.hidden = (mode !== "memory");
+    }
+  }
+
+  modeBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      switchMode(b.getAttribute("data-hub-mode"));
+    });
+  });
+
+  // Load full project hub state
+  function loadHubSummary() {
+    fetch(projApi, { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        hubData.project = data.project;
+        hubData.role = data.caller_role || "read";
+        hubData.modules = data.modules || [];
+        hubData.cycles = data.cycles || [];
+        hubData.labels = data.labels || [];
+        hubData.members = data.members || [];
+        hubData.repos = data.github_repos || [];
+
+        document.getElementById("hub-proj-prefix-pill").textContent = data.project.identifier_prefix || "PRJ";
+        var isRestr = data.project.access_mode === "restricted";
+        var accPill = document.getElementById("hub-proj-access-pill");
+        accPill.textContent = isRestr ? "TEAM // RESTRICTED" : "OPEN // COMPANY";
+        accPill.className = "hub-badge mono " + (isRestr ? "hub-badge-accent" : "hub-badge-neutral");
+
+        document.getElementById("hub-proj-role-pill").textContent = "ROLE: " + hubData.role.toUpperCase();
+        var done = data.project.task_done != null ? data.project.task_done : (data.project.task_counts ? data.project.task_counts.done : 0);
+        var total = data.project.task_total != null ? data.project.task_total : (data.project.task_counts ? data.project.task_counts.total : 0);
+        document.getElementById("hub-proj-progress-pill").textContent = done + " / " + total + " TASKS DONE";
+
+        document.getElementById("hub-nav-count-modules").textContent = String(hubData.modules.length + hubData.cycles.length);
+        document.getElementById("hub-nav-count-team").textContent = String(hubData.members.length);
+
+        // Populate settings form
+        document.getElementById("hub-set-prefix").value = data.project.identifier_prefix || "";
+        document.getElementById("hub-set-access").value = data.project.access_mode || "restricted";
+        document.getElementById("hub-set-desc").value = data.project.description || "";
+
+        populateSelectors();
+        renderModulesAndCycles();
+        renderTeam();
+        renderGitHubRepos();
+      })
+      .catch(function () {});
+  }
+
+  function populateSelectors() {
+    var modOpts = '<option value="">All Modules</option>' + hubData.modules.map(function (m) {
+      return '<option value="' + esc(m.id) + '">' + esc(m.name) + '</option>';
+    }).join("");
+    document.getElementById("hub-filter-module").innerHTML = modOpts;
+    document.getElementById("hub-nt-module").innerHTML = '<option value="">No Module</option>' + hubData.modules.map(function (m) {
+      return '<option value="' + esc(m.id) + '">' + esc(m.name) + '</option>';
+    }).join("");
+    document.getElementById("hub-prop-module").innerHTML = '<option value="">None</option>' + hubData.modules.map(function (m) {
+      return '<option value="' + esc(m.id) + '">' + esc(m.name) + '</option>';
+    }).join("");
+
+    var cycOpts = '<option value="">All Cycles</option>' + hubData.cycles.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+    }).join("");
+    document.getElementById("hub-filter-cycle").innerHTML = cycOpts;
+    document.getElementById("hub-nt-cycle").innerHTML = '<option value="">No Cycle</option>' + hubData.cycles.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+    }).join("");
+    document.getElementById("hub-prop-cycle").innerHTML = '<option value="">None</option>' + hubData.cycles.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+    }).join("");
+
+    var lblOpts = '<option value="">All Labels</option>' + hubData.labels.map(function (l) {
+      return '<option value="' + esc(l.name) + '">' + esc(l.name) + '</option>';
+    }).join("");
+    document.getElementById("hub-filter-label").innerHTML = lblOpts;
+
+    var memOpts = '<option value="">All Assignees</option>' + hubData.members.map(function (m) {
+      return '<option value="' + esc(m.username) + '">@' + esc(m.username) + '</option>';
+    }).join("");
+    document.getElementById("hub-filter-assignee").innerHTML = memOpts;
+  }
+
+  function loadTasks() {
+    var params = new URLSearchParams();
+    var q = document.getElementById("hub-filter-q").value.trim();
+    var st = document.getElementById("hub-filter-state").value;
+    var pr = document.getElementById("hub-filter-priority").value;
+    var asg = document.getElementById("hub-filter-assignee").value;
+    var mod = document.getElementById("hub-filter-module").value;
+    var cyc = document.getElementById("hub-filter-cycle").value;
+    var lbl = document.getElementById("hub-filter-label").value;
+    if (q) params.set("q", q);
+    if (st) params.set("state", st);
+    if (pr) params.set("priority", pr);
+    if (asg) params.set("assignee", asg);
+    if (mod) params.set("module_id", mod);
+    if (cyc) params.set("cycle_id", cyc);
+    if (lbl) params.set("label", lbl);
+
+    fetch(projApi + "/tasks?" + params.toString(), { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (tasks) {
+        hubData.tasks = tasks || [];
+        document.getElementById("hub-nav-count-tasks").textContent = String(hubData.tasks.length);
+        renderKanban();
+        renderTaskList();
+      });
+  }
+
+  [
+    "hub-filter-q",
+    "hub-filter-state",
+    "hub-filter-priority",
+    "hub-filter-assignee",
+    "hub-filter-module",
+    "hub-filter-cycle",
+    "hub-filter-label"
+  ].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener(id === "hub-filter-q" ? "input" : "change", loadTasks);
+  });
+
+  function renderKanban() {
+    var container = document.getElementById("hub-kanban-columns");
+    if (!container) return;
+    container.innerHTML = STATE_COLS.map(function (col) {
+      var colTasks = hubData.tasks.filter(function (t) { return t.state === col.key; });
+      return '<div class="hub-kanban-col" data-col-state="' + col.key + '">' +
+        '<div class="hub-kanban-col-header">' +
+          '<span class="hub-col-led col-led-' + col.key + '" aria-hidden="true"></span>' +
+          '<strong class="mono">' + esc(col.label.toUpperCase()) + '</strong>' +
+          '<span class="hub-col-count mono">' + colTasks.length + '</span>' +
+          '<button type="button" class="hub-col-add-btn mono" data-quick-add-state="' + col.key + '" title="Add task to ' + esc(col.label) + '">+</button>' +
+        '</div>' +
+        '<div class="hub-kanban-cards">' +
+          (colTasks.length === 0
+            ? '<div class="hub-kanban-empty mono">EMPTY_QUEUE</div>'
+            : colTasks.map(renderTaskCard).join("")) +
+        '</div>' +
+      '</div>';
+    }).join("");
+
+    container.querySelectorAll("[data-open-task]").forEach(function (card) {
+      card.addEventListener("click", function (e) {
+        if (e.target.closest("[data-quick-state]")) return;
+        openTaskDrawer(card.getAttribute("data-open-task"));
+      });
+    });
+
+    container.querySelectorAll("[data-quick-add-state]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.getElementById("hub-nt-state").value = btn.getAttribute("data-quick-add-state");
+        document.getElementById("hub-modal-new-task").hidden = false;
+        document.getElementById("hub-nt-title").focus();
+      });
+    });
+  }
+
+  function renderTaskCard(t) {
+    var labelsHtml = (t.labels || []).map(function (l) {
+      return '<span class="hub-label-chip" style="--lbl-color:' + esc(l.color) + '">' + esc(l.name) + '</span>';
+    }).join("");
+    var assigneesHtml = (t.assignees || []).map(function (a) {
+      return '<span class="hub-avatar-xs" title="Assigned to @' + esc(a.username) + '">' + esc(a.username.slice(0, 2).toUpperCase()) + '</span>';
+    }).join("");
+    var modObj = hubData.modules.find(function (m) { return m.id === t.module_id; });
+    var cycObj = hubData.cycles.find(function (c) { return c.id === t.cycle_id; });
+
+    return '<article class="hub-task-card" data-open-task="' + esc(t.key) + '">' +
+      '<div class="hub-task-card-top">' +
+        '<span class="hub-task-key mono">' + esc(t.key) + '</span>' +
+        '<span class="hub-prio-pill prio-' + esc(t.priority) + '">' + esc(t.priority) + '</span>' +
+      '</div>' +
+      '<h4 class="hub-task-card-title">' + esc(t.title) + '</h4>' +
+      (labelsHtml ? '<div class="hub-task-card-labels">' + labelsHtml + '</div>' : '') +
+      '<div class="hub-task-card-meta mono">' +
+        (modObj ? '<span class="hub-meta-tag">MOD:' + esc(modObj.name) + '</span>' : '') +
+        (cycObj ? '<span class="hub-meta-tag">CYC:' + esc(cycObj.name) + '</span>' : '') +
+        (t.due_date ? '<span class="hub-meta-tag">DUE:' + esc(t.due_date) + '</span>' : '') +
+        (t.estimate_points != null ? '<span class="hub-meta-tag">' + t.estimate_points + 'PT</span>' : '') +
+        ((t.subtasks_total || t.subtask_count || 0) > 0 ? '<span class="hub-meta-tag">SUB:' + (t.subtasks_done || t.subtask_done_count || 0) + '/' + (t.subtasks_total || t.subtask_count || 0) + '</span>' : '') +
+        ((t.github_links ? t.github_links.length : (t.github_link_count || 0)) > 0 ? '<span class="hub-meta-tag">GH:' + (t.github_links ? t.github_links.length : t.github_link_count) + '</span>' : '') +
+        ((t.wiki_pages ? t.wiki_pages.length : (t.wiki_link_count || 0)) > 0 ? '<span class="hub-meta-tag">MD:' + (t.wiki_pages ? t.wiki_pages.length : t.wiki_link_count) + '</span>' : '') +
+      '</div>' +
+      '<div class="hub-task-card-footer">' +
+        '<span class="hub-creator-tag mono" title="Created by">' +
+          (t.created_by_username ? '@' + esc(t.created_by_username) : 'system') +
+          (t.created_by_agent ? ' · <small class="hub-agent-tag">' + esc(t.created_by_agent) + '</small>' : '') +
+        '</span>' +
+        '<div class="hub-avatar-group">' + assigneesHtml + '</div>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function renderTaskList() {
+    var tbody = document.getElementById("hub-list-tbody");
+    if (!tbody) return;
+    if (!hubData.tasks.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="hub-muted text-center py-6">No tasks match the current filter. Click "+ New Task" to create one.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = hubData.tasks.map(function (t) {
+      var modObj = hubData.modules.find(function (m) { return m.id === t.module_id; });
+      var cycObj = hubData.cycles.find(function (c) { return c.id === t.cycle_id; });
+      var assignees = (t.assignees || []).map(function (a) { return '@' + esc(a.username); }).join(", ") || "—";
+      var dates = (t.start_date || "—") + " → " + (t.due_date || "—");
+      return '<tr class="hub-task-row" data-open-task="' + esc(t.key) + '">' +
+        '<td class="mono"><span class="hub-task-key">' + esc(t.key) + '</span></td>' +
+        '<td><strong>' + esc(t.title) + '</strong></td>' +
+        '<td><span class="hub-state-pill state-' + esc(t.state) + '">' + esc(t.state.replace("_", " ")) + '</span></td>' +
+        '<td><span class="hub-prio-pill prio-' + esc(t.priority) + '">' + esc(t.priority) + '</span></td>' +
+        '<td>' + assignees + '</td>' +
+        '<td>' + (modObj ? esc(modObj.name) : "—") + '</td>' +
+        '<td>' + (cycObj ? esc(cycObj.name) : "—") + '</td>' +
+        '<td class="mono">' + esc(dates) + '</td>' +
+        '<td class="mono">' + (t.estimate_points != null ? t.estimate_points : "—") + '</td>' +
+        '<td>' + (t.created_by_username ? '@' + esc(t.created_by_username) : '—') + (t.created_by_agent ? ' (' + esc(t.created_by_agent) + ')' : '') + '</td>' +
+      '</tr>';
+    }).join("");
+
+    tbody.querySelectorAll("[data-open-task]").forEach(function (row) {
+      row.addEventListener("click", function () {
+        openTaskDrawer(row.getAttribute("data-open-task"));
+      });
+    });
+  }
+
+  // Task Drawer
+  var drawerBackdrop = document.getElementById("hub-task-drawer-backdrop");
+  function openTaskDrawer(taskRef) {
+    drawerBackdrop.hidden = false;
+    fetch(projApi + "/tasks/" + encodeURIComponent(taskRef), { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (detail) {
+        if (!detail || !detail.task) return;
+        hubData.activeTask = detail;
+        populateDrawer(detail);
+      });
+  }
+
+  function populateDrawer(detail) {
+    var t = detail.task;
+    document.getElementById("hub-drawer-key").textContent = t.key;
+    var creatorInfo = "Created by " + (t.created_by_username ? "@" + t.created_by_username : "system");
+    if (t.created_by_agent) creatorInfo += " via " + t.created_by_agent;
+    document.getElementById("hub-drawer-creator").textContent = creatorInfo;
+    document.getElementById("hub-drawer-title").value = t.title || "";
+    document.getElementById("hub-drawer-desc").value = t.description || t.description_md || "";
+    document.getElementById("hub-prop-state").value = t.state || "todo";
+    document.getElementById("hub-prop-priority").value = t.priority || "medium";
+    document.getElementById("hub-prop-module").value = t.module_id || "";
+    document.getElementById("hub-prop-cycle").value = t.cycle_id || "";
+    document.getElementById("hub-prop-start").value = t.start_date || "";
+    document.getElementById("hub-prop-due").value = t.due_date || "";
+    document.getElementById("hub-prop-estimate").value = t.estimate_points != null ? t.estimate_points : "";
+
+    // Assignees multi-toggle pills
+    var currentAssignees = (t.assignees || []).map(function (a) { return a.username; });
+    var candidateUsers = hubData.members.map(function (m) { return m.username; });
+    currentAssignees.forEach(function (u) {
+      if (candidateUsers.indexOf(u) === -1) candidateUsers.push(u);
+    });
+    var asgWrap = document.getElementById("hub-prop-assignees");
+    asgWrap.innerHTML = candidateUsers.map(function (u) {
+      var active = currentAssignees.indexOf(u) !== -1;
+      return '<button type="button" class="hub-check-pill ' + (active ? 'active' : '') + '" data-toggle-assignee="' + esc(u) + '">@' + esc(u) + '</button>';
+    }).join("") || '<span class="hub-muted-sm">No members yet</span>';
+    asgWrap.querySelectorAll("[data-toggle-assignee]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        b.classList.toggle("active");
+        saveActiveTaskProps();
+      });
+    });
+
+    // Labels multi-toggle pills
+    var currentLabels = (t.labels || []).map(function (l) { return l.name; });
+    var lblWrap = document.getElementById("hub-prop-labels");
+    lblWrap.innerHTML = hubData.labels.map(function (l) {
+      var active = currentLabels.indexOf(l.name) !== -1;
+      return '<button type="button" class="hub-check-pill ' + (active ? 'active' : '') + '" data-toggle-label="' + esc(l.name) + '">' + esc(l.name) + '</button>';
+    }).join("") || '<span class="hub-muted-sm">No labels defined</span>';
+    lblWrap.querySelectorAll("[data-toggle-label]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        b.classList.toggle("active");
+        saveActiveTaskProps();
+      });
+    });
+
+    // Subtasks
+    var subWrap = document.getElementById("hub-drawer-subtasks");
+    subWrap.innerHTML = (detail.subtasks || []).map(function (st) {
+      return '<div class="hub-subtask-item" data-open-subtask="' + esc(st.key) + '">' +
+        '<span class="hub-task-key mono">' + esc(st.key) + '</span>' +
+        '<span class="hub-state-pill state-' + esc(st.state) + '">' + esc(st.state) + '</span>' +
+        '<span>' + esc(st.title) + '</span>' +
+      '</div>';
+    }).join("") || '<p class="hub-muted-sm">No subtasks yet.</p>';
+    subWrap.querySelectorAll("[data-open-subtask]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        openTaskDrawer(el.getAttribute("data-open-subtask"));
+      });
+    });
+
+    // Wiki links
+    var wikiPages = t.wiki_pages || detail.wiki_links || [];
+    var wikiWrap = document.getElementById("hub-drawer-wiki-links");
+    wikiWrap.innerHTML = wikiPages.map(function (path) {
+      var href = "w/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj) + "/p/" + path;
+      return '<span class="hub-chip">' +
+        '<a href="' + esc(href) + '" class="mono">▤ ' + esc(path) + '</a>' +
+        '<button type="button" class="hub-chip-del" data-remove-wiki="' + esc(path) + '">✕</button>' +
+      '</span>';
+    }).join("") || '<p class="hub-muted-sm">No wiki pages linked.</p>';
+    wikiWrap.querySelectorAll("[data-remove-wiki]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var nextLinks = wikiPages.filter(function (p) { return p !== b.getAttribute("data-remove-wiki"); });
+        updateActiveTask({ wiki_pages: nextLinks });
+      });
+    });
+
+    // GitHub links
+    var ghLinks = t.github_links || detail.github_links || [];
+    var ghWrap = document.getElementById("hub-drawer-gh-links");
+    ghWrap.innerHTML = ghLinks.map(function (g) {
+      return '<div class="hub-gh-link-item">' +
+        '<span class="hub-badge ' + (g.state === 'open' ? 'hub-badge-success' : 'hub-badge-neutral') + '">' + esc(g.kind.toUpperCase()) + ' #' + g.number + '</span>' +
+        '<a href="' + esc(g.html_url) + '" target="_blank" rel="noopener">' + esc(g.repo_full_name) + ': ' + esc(g.title) + ' ↗</a>' +
+      '</div>';
+    }).join("") || '<p class="hub-muted-sm">No GitHub Issues or PRs linked.</p>';
+
+    // Comments
+    var commWrap = document.getElementById("hub-drawer-comments");
+    commWrap.innerHTML = (detail.comments || []).map(function (c) {
+      return '<div class="hub-comment-card">' +
+        '<div class="hub-comment-meta">' +
+          '<strong>' + (c.author_username ? '@' + esc(c.author_username) : 'system') + '</strong>' +
+          (c.author_agent ? ' <span class="hub-agent-tag">' + esc(c.author_agent) + '</span>' : '') +
+          '<span>' + esc((c.created_at || "").slice(0, 16).replace("T", " ")) + '</span>' +
+        '</div>' +
+        '<div class="hub-comment-body">' + esc(c.body || c.body_md || "") + '</div>' +
+      '</div>';
+    }).join("") || '<p class="hub-muted-sm">No comments yet.</p>';
+
+    // Activities
+    var actWrap = document.getElementById("hub-drawer-activities");
+    actWrap.innerHTML = (detail.activities || []).map(function (a) {
+      var who = a.actor_username ? '@' + esc(a.actor_username) : (a.actor_agent || 'system');
+      var desc = a.action;
+      if (a.field) desc += ' (' + a.field + ': ' + (a.old_value || 'none') + ' → ' + (a.new_value || 'none') + ')';
+      return '<div class="hub-activity-row">' +
+        '<strong>' + who + '</strong> ' + esc(desc) +
+        ' <time>' + esc((a.created_at || "").slice(0, 16).replace("T", " ")) + '</time>' +
+      '</div>';
+    }).join("");
+  }
+
+  function updateActiveTask(patch) {
+    if (!hubData.activeTask || !hubData.activeTask.task) return;
+    var key = hubData.activeTask.task.key;
+    fetch(projApi + "/tasks/" + encodeURIComponent(key), {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch)
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (detail) {
+        if (!detail) return;
+        hubData.activeTask = detail;
+        populateDrawer(detail);
+        loadTasks();
+        loadHubSummary();
+        var ind = document.getElementById("hub-drawer-saved-indicator");
+        ind.hidden = false;
+        setTimeout(function () { ind.hidden = true; }, 1600);
+      });
+  }
+
+  function saveActiveTaskProps() {
+    var assignees = Array.from(document.querySelectorAll("#hub-prop-assignees .hub-check-pill.active")).map(function (b) {
+      return b.getAttribute("data-toggle-assignee");
+    });
+    var labels = Array.from(document.querySelectorAll("#hub-prop-labels .hub-check-pill.active")).map(function (b) {
+      return b.getAttribute("data-toggle-label");
+    });
+    var estVal = document.getElementById("hub-prop-estimate").value;
+    updateActiveTask({
+      title: document.getElementById("hub-drawer-title").value.trim(),
+      description_md: document.getElementById("hub-drawer-desc").value,
+      state: document.getElementById("hub-prop-state").value,
+      priority: document.getElementById("hub-prop-priority").value,
+      module_id: document.getElementById("hub-prop-module").value,
+      cycle_id: document.getElementById("hub-prop-cycle").value,
+      start_date: document.getElementById("hub-prop-start").value,
+      due_date: document.getElementById("hub-prop-due").value,
+      estimate_points: estVal === "" ? -1 : parseInt(estVal, 10),
+      assignees: assignees,
+      labels: labels
+    });
+  }
+
+  document.getElementById("hub-drawer-save-btn").addEventListener("click", saveActiveTaskProps);
+  [
+    "hub-prop-state",
+    "hub-prop-priority",
+    "hub-prop-module",
+    "hub-prop-cycle",
+    "hub-prop-start",
+    "hub-prop-due",
+    "hub-prop-estimate"
+  ].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", saveActiveTaskProps);
+  });
+
+  document.getElementById("hub-drawer-close-btn").addEventListener("click", function () {
+    drawerBackdrop.hidden = true;
+  });
+
+  document.getElementById("hub-drawer-delete-btn").addEventListener("click", function () {
+    if (!hubData.activeTask) return;
+    var key = hubData.activeTask.task.key;
+    if (!confirm("Delete task " + key + "?")) return;
+    fetch(projApi + "/tasks/" + encodeURIComponent(key), {
+      method: "DELETE",
+      credentials: "include"
+    }).then(function (r) {
+      if (r.ok) {
+        drawerBackdrop.hidden = true;
+        loadTasks();
+        loadHubSummary();
+      }
+    });
+  });
+
+  // Add Subtask inside Drawer
+  document.getElementById("hub-drawer-subtask-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!hubData.activeTask) return;
+    var input = document.getElementById("hub-drawer-subtask-title");
+    fetch(projApi + "/tasks", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: input.value.trim(),
+        parent_id: hubData.activeTask.task.id,
+        state: "todo",
+        priority: "medium"
+      })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function () {
+        input.value = "";
+        openTaskDrawer(hubData.activeTask.task.key);
+        loadTasks();
+      });
+  });
+
+  // Link Wiki Page inside Drawer
+  document.getElementById("hub-drawer-wiki-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!hubData.activeTask) return;
+    var input = document.getElementById("hub-drawer-wiki-path");
+    var path = input.value.trim();
+    if (!path) return;
+    var current = (hubData.activeTask.task.wiki_pages || hubData.activeTask.wiki_links || []).slice();
+    if (current.indexOf(path) === -1) current.push(path);
+    input.value = "";
+    updateActiveTask({ wiki_pages: current });
+  });
+
+  // Link GitHub Item inside Drawer
+  document.getElementById("hub-drawer-gh-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!hubData.activeTask) return;
+    var sel = document.getElementById("hub-drawer-gh-select").value;
+    if (!sel) return;
+    var parts = sel.split(":");
+    fetch(projApi + "/tasks/" + encodeURIComponent(hubData.activeTask.task.key) + "/github-links", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo_id: parts[0], number: parseInt(parts[1], 10) })
+    }).then(function () {
+      openTaskDrawer(hubData.activeTask.task.key);
+      loadTasks();
+    });
+  });
+
+  // Post Comment inside Drawer
+  document.getElementById("hub-drawer-comment-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!hubData.activeTask) return;
+    var area = document.getElementById("hub-drawer-comment-body");
+    fetch(projApi + "/tasks/" + encodeURIComponent(hubData.activeTask.task.key) + "/comments", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body_md: area.value })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function () {
+        area.value = "";
+        openTaskDrawer(hubData.activeTask.task.key);
+      });
+  });
+
+  // Create New Task Modal
+  document.getElementById("hub-btn-new-task").addEventListener("click", function () {
+    document.getElementById("hub-modal-new-task").hidden = false;
+    document.getElementById("hub-nt-title").focus();
+  });
+
+  document.getElementById("hub-new-task-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var asgRaw = document.getElementById("hub-nt-assignees").value;
+    var assignees = asgRaw.split(",").map(function (s) { return s.trim().replace(/^@/, ""); }).filter(Boolean);
+    var estRaw = document.getElementById("hub-nt-estimate").value;
+    fetch(projApi + "/tasks", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: document.getElementById("hub-nt-title").value.trim(),
+        description_md: document.getElementById("hub-nt-desc").value,
+        state: document.getElementById("hub-nt-state").value,
+        priority: document.getElementById("hub-nt-priority").value,
+        module_id: document.getElementById("hub-nt-module").value || null,
+        cycle_id: document.getElementById("hub-nt-cycle").value || null,
+        start_date: document.getElementById("hub-nt-start").value || null,
+        due_date: document.getElementById("hub-nt-due").value || null,
+        estimate_points: estRaw ? parseInt(estRaw, 10) : null,
+        assignees: assignees
+      })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res) return;
+        document.getElementById("hub-modal-new-task").hidden = true;
+        document.getElementById("hub-new-task-form").reset();
+        loadTasks();
+        loadHubSummary();
+        showToast("Created task <strong>" + esc(res.task.key) + "</strong>");
+      });
+  });
+
+  // Commit Tasks to Wiki MD
+  document.getElementById("hub-btn-sync-md").addEventListener("click", function () {
+    fetch(projApi + "/tasks-sync-md", {
+      method: "POST",
+      credentials: "include"
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res) return;
+        var href = "w/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj) + "/p/" + res.path;
+        showToast('Committed <strong>' + res.task_count + ' tasks</strong> to Git-backed Wiki: <a href="' + esc(href) + '" class="underline font-semibold">' + esc(res.path) + ' →</a>');
+      });
+  });
+
+  // New Wiki Page Modal
+  document.getElementById("hub-btn-new-wiki").addEventListener("click", function () {
+    document.getElementById("hub-modal-new-wiki").hidden = false;
+    document.getElementById("hub-nw-path").focus();
+  });
+
+  document.getElementById("hub-new-wiki-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var p = document.getElementById("hub-nw-path").value.trim();
+    if (!p.endsWith(".md")) p += ".md";
+    fetch(projApi + "/pages", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: p,
+        title: document.getElementById("hub-nw-title").value.trim(),
+        kind: document.getElementById("hub-nw-kind").value,
+        tier: document.getElementById("hub-nw-tier").value,
+        pinned: document.getElementById("hub-nw-pinned").checked,
+        body: document.getElementById("hub-nw-body").value
+      })
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res) return;
+        document.getElementById("hub-modal-new-wiki").hidden = true;
+        var href = "w/" + encodeURIComponent(ws) + "/" + encodeURIComponent(proj) + "/p/" + res.path;
+        showToast('Committed Wiki Page <a href="' + esc(href) + '" class="underline font-semibold">' + esc(res.path) + ' →</a>');
+      });
+  });
+
+  // Modules, Cycles & Labels
+  function renderModulesAndCycles() {
+    var modList = document.getElementById("hub-modules-list");
+    modList.innerHTML = hubData.modules.map(function (m) {
+      var total = m.task_total != null ? m.task_total : (m.task_count || 0);
+      var done = m.task_done != null ? m.task_done : (m.done_task_count || 0);
+      var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      return '<div class="hub-item-card">' +
+        '<div class="hub-item-card-top">' +
+          '<strong class="mono">[MODULE] ' + esc(m.name) + '</strong>' +
+          '<span class="hub-badge hub-badge-accent">' + esc(m.status) + '</span>' +
+          '<button type="button" class="hub-btn hub-btn-danger hub-btn-xs" data-del-mod="' + esc(m.id) + '">Delete</button>' +
+        '</div>' +
+        (m.description ? '<p class="hub-muted-sm mt-1">' + esc(m.description) + '</p>' : '') +
+        '<div class="hub-progress-row mt-2">' +
+          '<div class="hub-progress-bar"><div class="hub-progress-fill" style="width:' + pct + '%"></div></div>' +
+          '<span class="mono">' + done + '/' + total + ' (' + pct + '%)</span>' +
+        '</div>' +
+        '<div class="hub-muted-sm mt-1">' +
+          (m.lead_username ? 'Lead: @' + esc(m.lead_username) + ' · ' : '') +
+          ((m.start_date || m.target_date) ? esc(m.start_date || '…') + ' → ' + esc(m.target_date || '…') : 'No target dates') +
+        '</div>' +
+      '</div>';
+    }).join("") || '<div class="hub-empty-inline">No modules yet. Create one above to group tasks by feature or initiative.</div>';
+
+    modList.querySelectorAll("[data-del-mod]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        fetch(projApi + "/modules/" + encodeURIComponent(b.getAttribute("data-del-mod")), {
+          method: "DELETE",
+          credentials: "include"
+        }).then(function () { loadHubSummary(); loadTasks(); });
+      });
+    });
+
+    var cycList = document.getElementById("hub-cycles-list");
+    cycList.innerHTML = hubData.cycles.map(function (c) {
+      var total = c.task_total != null ? c.task_total : (c.task_count || 0);
+      var done = c.task_done != null ? c.task_done : (c.done_task_count || 0);
+      var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      return '<div class="hub-item-card">' +
+        '<div class="hub-item-card-top">' +
+          '<strong class="mono">[CYCLE] ' + esc(c.name) + '</strong>' +
+          '<span class="hub-badge hub-badge-neutral">' + esc(c.status) + '</span>' +
+          '<button type="button" class="hub-btn hub-btn-danger hub-btn-xs" data-del-cyc="' + esc(c.id) + '">Delete</button>' +
+        '</div>' +
+        '<div class="hub-progress-row mt-2">' +
+          '<div class="hub-progress-bar"><div class="hub-progress-fill" style="width:' + pct + '%"></div></div>' +
+          '<span class="mono">' + done + '/' + total + '</span>' +
+        '</div>' +
+        '<div class="hub-muted-sm mt-1">' + esc(c.start_date || '…') + ' → ' + esc(c.end_date || '…') + '</div>' +
+      '</div>';
+    }).join("") || '<div class="hub-empty-inline">No cycles/sprints yet.</div>';
+
+    cycList.querySelectorAll("[data-del-cyc]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        fetch(projApi + "/cycles/" + encodeURIComponent(b.getAttribute("data-del-cyc")), {
+          method: "DELETE",
+          credentials: "include"
+        }).then(function () { loadHubSummary(); loadTasks(); });
+      });
+    });
+
+    var lblList = document.getElementById("hub-labels-list");
+    lblList.innerHTML = hubData.labels.map(function (l) {
+      return '<span class="hub-label-chip" style="--lbl-color:' + esc(l.color) + '">' +
+        esc(l.name) +
+        ' <button type="button" class="hub-chip-del" data-del-lbl="' + esc(l.id) + '">✕</button>' +
+      '</span>';
+    }).join("") || '<span class="hub-muted-sm">No labels yet.</span>';
+
+    lblList.querySelectorAll("[data-del-lbl]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        fetch(projApi + "/labels/" + encodeURIComponent(b.getAttribute("data-del-lbl")), {
+          method: "DELETE",
+          credentials: "include"
+        }).then(function () { loadHubSummary(); });
+      });
+    });
+  }
+
+  document.getElementById("hub-create-module-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch(projApi + "/modules", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("hub-mod-name").value.trim(),
+        status: document.getElementById("hub-mod-status").value,
+        lead_username: document.getElementById("hub-mod-lead").value.trim() || null,
+        start_date: document.getElementById("hub-mod-start").value || null,
+        target_date: document.getElementById("hub-mod-target").value || null,
+        description: document.getElementById("hub-mod-desc").value.trim()
+      })
+    }).then(function (r) {
+      if (r.ok) {
+        document.getElementById("hub-create-module-form").reset();
+        loadHubSummary();
+      }
+    });
+  });
+
+  document.getElementById("hub-create-cycle-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch(projApi + "/cycles", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("hub-cyc-name").value.trim(),
+        status: document.getElementById("hub-cyc-status").value,
+        start_date: document.getElementById("hub-cyc-start").value || null,
+        end_date: document.getElementById("hub-cyc-end").value || null
+      })
+    }).then(function (r) {
+      if (r.ok) {
+        document.getElementById("hub-create-cycle-form").reset();
+        loadHubSummary();
+      }
+    });
+  });
+
+  document.getElementById("hub-create-label-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch(projApi + "/labels", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("hub-lbl-name").value.trim(),
+        color: document.getElementById("hub-lbl-color").value
+      })
+    }).then(function (r) {
+      if (r.ok) {
+        document.getElementById("hub-lbl-name").value = "";
+        loadHubSummary();
+      }
+    });
+  });
+
+  // GitHub Integration
+  function renderGitHubRepos() {
+    var wrap = document.getElementById("hub-gh-repos-list");
+    var repoSel = document.getElementById("hub-ghi-repo");
+    if (repoSel) {
+      repoSel.innerHTML = hubData.repos.map(function (r) {
+        return '<option value="' + esc(r.id) + '">' + esc(r.full_name) + '</option>';
+      }).join("");
+    }
+    wrap.innerHTML = hubData.repos.map(function (r) {
+      return '<div class="hub-item-card">' +
+        '<div class="hub-item-card-top">' +
+          '<a href="https://github.com/' + esc(r.full_name) + '" target="_blank" rel="noopener" class="mono font-semibold">GH // ' + esc(r.full_name) + ' ↗</a>' +
+          '<button type="button" class="hub-btn hub-btn-danger hub-btn-xs" data-del-repo="' + esc(r.id) + '">Detach</button>' +
+        '</div>' +
+        '<div class="hub-muted-sm mono mt-1">' +
+          (r.has_token ? '[PAT_CONFIGURED] · ' : '[PUBLIC_API] · ') +
+          (r.last_synced_at ? 'SYNC=' + esc(r.last_synced_at.slice(0, 16).replace("T", " ")) : 'UNSYNCED') +
+        '</div>' +
+      '</div>';
+    }).join("") || '<div class="hub-empty-inline mono">No GitHub repositories attached yet.</div>';
+
+    wrap.querySelectorAll("[data-del-repo]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        fetch(projApi + "/github/repos/" + encodeURIComponent(b.getAttribute("data-del-repo")), {
+          method: "DELETE",
+          credentials: "include"
+        }).then(function () { loadHubSummary(); loadGitHubItems(); });
+      });
+    });
+  }
+
+  function loadGitHubItems() {
+    var kind = document.getElementById("hub-gh-filter-kind").value;
+    var state = document.getElementById("hub-gh-filter-state").value;
+    var params = new URLSearchParams();
+    if (kind) params.set("kind", kind);
+    if (state) params.set("state", state);
+
+    fetch(projApi + "/github/items?" + params.toString(), { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (items) {
+        hubData.ghItems = items || [];
+        document.getElementById("hub-nav-count-github").textContent = String(hubData.ghItems.length);
+        var ghSelect = document.getElementById("hub-drawer-gh-select");
+        if (ghSelect) {
+          ghSelect.innerHTML = '<option value="">Select a synced GitHub Issue or PR…</option>' + hubData.ghItems.map(function (it) {
+            return '<option value="' + esc(it.repo_id + ':' + it.number) + '">' + esc(it.repo_full_name) + ' #' + it.number + ' — ' + esc(it.title) + '</option>';
+          }).join("");
+        }
+        var list = document.getElementById("hub-gh-items-list");
+        if (!hubData.ghItems.length) {
+          list.innerHTML = '<div class="hub-empty-inline">No synced GitHub Issues or PRs found. Attach a repo and click "↻ Sync from GitHub".</div>';
+          return;
+        }
+        list.innerHTML = hubData.ghItems.map(function (it) {
+          var isPr = it.kind === "pr";
+          return '<div class="hub-item-card">' +
+            '<div class="hub-item-card-top">' +
+              '<span class="hub-badge ' + (it.state === 'open' ? 'hub-badge-success' : 'hub-badge-neutral') + '">' + (isPr ? 'PR' : 'ISSUE') + ' #' + it.number + ' · ' + esc(it.state) + '</span>' +
+              '<a href="' + esc(it.html_url) + '" target="_blank" rel="noopener" class="font-semibold">' + esc(it.title) + ' ↗</a>' +
+              '<button type="button" class="hub-btn hub-btn-secondary hub-btn-xs ml-auto" data-import-gh="' + esc(it.repo_id) + '" data-import-num="' + it.number + '">+ Import as Task</button>' +
+            '</div>' +
+            '<div class="hub-muted-sm mt-1">' +
+              '<span class="mono">' + esc(it.repo_full_name) + '</span> · opened by @' + esc(it.author_login) +
+              (it.assignees && it.assignees.length ? ' · assignees: ' + it.assignees.map(esc).join(', ') : '') +
+            '</div>' +
+          '</div>';
+        }).join("");
+
+        list.querySelectorAll("[data-import-gh]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var rid = b.getAttribute("data-import-gh");
+            var num = b.getAttribute("data-import-num");
+            fetch(projApi + "/github/items/" + encodeURIComponent(rid) + "/" + encodeURIComponent(num) + "/import-task", {
+              method: "POST",
+              credentials: "include"
+            }).then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (res) {
+                if (res && res.task) {
+                  loadTasks();
+                  loadHubSummary();
+                  showToast("Imported GitHub #" + num + " as task <strong>" + esc(res.task.key) + "</strong>");
+                }
+              });
+          });
+        });
+      });
+  }
+
+  document.getElementById("hub-gh-filter-kind").addEventListener("change", loadGitHubItems);
+  document.getElementById("hub-gh-filter-state").addEventListener("change", loadGitHubItems);
+
+  document.getElementById("hub-add-gh-repo-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch(projApi + "/github/repos", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        full_name: document.getElementById("hub-gh-full-name").value.trim(),
+        token: document.getElementById("hub-gh-token").value.trim() || null
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          alert((res.j && res.j.error) || "Failed to attach repo");
+          return;
+        }
+        document.getElementById("hub-add-gh-repo-form").reset();
+        loadHubSummary();
+        showToast("Attached GitHub repository <strong>" + esc(res.j.full_name) + "</strong>");
+      });
+  });
+
+  document.getElementById("hub-gh-sync-btn").addEventListener("click", function () {
+    var btn = document.getElementById("hub-gh-sync-btn");
+    btn.disabled = true;
+    btn.textContent = "Syncing…";
+    fetch(projApi + "/github/sync", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "↻ Sync from GitHub";
+        loadGitHubItems();
+        loadHubSummary();
+        showToast("Synced <strong>" + (res.synced_items || 0) + "</strong> Issues &amp; PRs from GitHub");
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = "↻ Sync from GitHub";
+      });
+  });
+
+  document.getElementById("hub-gh-open-new-issue").addEventListener("click", function () {
+    if (!hubData.repos.length) {
+      alert("Attach a GitHub repository first.");
+      return;
+    }
+    document.getElementById("hub-modal-gh-issue").hidden = false;
+  });
+
+  document.getElementById("hub-gh-issue-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch(projApi + "/github/issues", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo_id: document.getElementById("hub-ghi-repo").value,
+        title: document.getElementById("hub-ghi-title").value.trim(),
+        body: document.getElementById("hub-ghi-body").value
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          alert((res.j && res.j.error) || "Failed to create GitHub issue");
+          return;
+        }
+        document.getElementById("hub-modal-gh-issue").hidden = true;
+        document.getElementById("hub-gh-issue-form").reset();
+        loadGitHubItems();
+        showToast('Created GitHub Issue <a href="' + esc(res.j.html_url) + '" target="_blank" class="underline">#' + res.j.number + ' ↗</a>');
+      });
+  });
+
+  // Team & Access Management
+  function renderTeam() {
+    var wrap = document.getElementById("hub-members-table-wrap");
+    if (!hubData.members.length) {
+      wrap.innerHTML = '<div class="hub-empty-inline">No explicit team members added yet. Invite teammates above.</div>';
+      return;
+    }
+    wrap.innerHTML = '<table class="hub-table"><thead><tr><th>User</th><th>Name</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody>' +
+      hubData.members.map(function (m) {
+        return '<tr>' +
+          '<td class="mono"><strong>@' + esc(m.username) + '</strong></td>' +
+          '<td>' + esc(m.name || "—") + '</td>' +
+          '<td><span class="hub-role-pill">' + esc(m.role.toUpperCase()) + '</span></td>' +
+          '<td>' + esc((m.granted_at || "").slice(0, 10)) + '</td>' +
+          '<td><button type="button" class="hub-btn hub-btn-danger hub-btn-xs" data-remove-member="' + esc(m.username) + '">Remove</button></td>' +
+        '</tr>';
+      }).join("") + '</tbody></table>';
+
+    wrap.querySelectorAll("[data-remove-member]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var u = b.getAttribute("data-remove-member");
+        fetch(projApi + "/members/" + encodeURIComponent(u), {
+          method: "DELETE",
+          credentials: "include"
+        }).then(function () { loadHubSummary(); });
+      });
+    });
+
+    // Also load user directory into datalist for autocomplete
+    fetch(basePath + "/api/v1/hub/users", { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (users) {
+        var dl = document.getElementById("hub-all-users-datalist");
+        if (dl) {
+          dl.innerHTML = users.map(function (u) {
+            return '<option value="' + esc(u.username) + '">' + esc(u.name || u.username) + '</option>';
+          }).join("");
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById("hub-invite-member-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var msg = document.getElementById("hub-team-msg");
+    var u = document.getElementById("hub-invite-username").value.trim().replace(/^@/, "");
+    var role = document.getElementById("hub-invite-role").value;
+    fetch(projApi + "/members", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: u, role: role })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          msg.textContent = (res.j && res.j.error) || "Failed to grant access";
+          return;
+        }
+        msg.textContent = "Granted " + role.toUpperCase() + " access to @" + u;
+        document.getElementById("hub-invite-username").value = "";
+        loadHubSummary();
+      });
+  });
+
+  document.getElementById("hub-project-settings-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    fetch(projApi, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identifier_prefix: document.getElementById("hub-set-prefix").value.trim(),
+        access_mode: document.getElementById("hub-set-access").value,
+        description: document.getElementById("hub-set-desc").value
+      })
+    }).then(function (r) {
+      if (r.ok) {
+        loadHubSummary();
+        loadTasks();
+        var ok = document.getElementById("hub-proj-settings-saved");
+        ok.hidden = false;
+        setTimeout(function () { ok.hidden = true; }, 2000);
+      }
+    });
+  });
+
+  // Initial load: if URL explicitly requests a memory/ops tab (?tab=...) or #knowledge, show the memory view
+  var urlParams = new URLSearchParams(window.location.search || "");
+  if (urlParams.has("tab") || window.location.hash === "#knowledge") {
+    switchMode("memory");
+  } else {
+    switchMode("board");
+  }
+  loadHubSummary();
+  loadTasks();
+  loadGitHubItems();
+})();
+</script>

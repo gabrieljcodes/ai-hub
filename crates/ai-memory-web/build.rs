@@ -31,6 +31,7 @@ const TAILWIND_WINDOWS_X64_SHA256: &str =
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=static/tailwind.css");
+    println!("cargo:rerun-if-changed=templates/");
     println!("cargo:rerun-if-env-changed=TAILWIND_BUILD");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());

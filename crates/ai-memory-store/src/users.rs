@@ -414,7 +414,7 @@ pub fn find_user_by_username(conn: &Connection, username: &str) -> StoreResult<O
     conn.query_row(
         "SELECT id, username, name, email, created_at, last_seen_at, \
                 role, must_change_password, disabled_at, password_hash \
-         FROM users WHERE username = ?1",
+         FROM users WHERE username = ?1 COLLATE NOCASE",
         params![username],
         |row| row_to_user(row, 0),
     )
@@ -449,7 +449,7 @@ pub fn find_login_user_by_username(
     conn.query_row(
         "SELECT id, username, name, email, created_at, last_seen_at, \
                 role, must_change_password, disabled_at, password_hash \
-         FROM users WHERE username = ?1",
+         FROM users WHERE username = ?1 COLLATE NOCASE",
         params![username],
         |row| {
             let password_hash: Option<String> = row.get(9)?;
@@ -1074,5 +1074,46 @@ mod tests {
         assert_eq!(user.id, author);
         assert_eq!(user.username, "alice");
         assert_foreign_keys_clean(&conn);
+    }
+
+    #[test]
+    fn find_user_by_username_is_case_insensitive() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "OFF").unwrap();
+        crate::migrations::run(&mut conn).unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+
+        let new_user = NewUser {
+            username: "Bakalhau".into(),
+            name: Some("Bakalhau Root".into()),
+            email: Some("root@example.com".into()),
+        };
+        let user_id = insert_human_user(
+            &conn,
+            &new_user,
+            UserRole::Root,
+            Some("argon2_hash_mock"),
+            false,
+        )
+        .unwrap();
+
+        // Lowercase lookup
+        let found_lower = find_user_by_username(&conn, "bakalhau").unwrap().unwrap();
+        assert_eq!(found_lower.id, user_id);
+        assert_eq!(found_lower.username, "Bakalhau");
+
+        // Uppercase lookup
+        let found_upper = find_user_by_username(&conn, "BAKALHAU").unwrap().unwrap();
+        assert_eq!(found_upper.id, user_id);
+
+        // Login lookup case-insensitive
+        let login_lower = find_login_user_by_username(&conn, "bakalhau")
+            .unwrap()
+            .unwrap();
+        assert_eq!(login_lower.user.id, user_id);
+        assert_eq!(
+            login_lower.password_hash.as_deref(),
+            Some("argon2_hash_mock")
+        );
     }
 }

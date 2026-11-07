@@ -1,8 +1,8 @@
 <script>
 (function () {
-  var key="ai-memory-management-theme", selected="system";
+  var key="ai-memory-management-theme", selected="dark";
   var media=window.matchMedia("(prefers-color-scheme: dark)");
-  try { selected=localStorage.getItem(key)||"system"; } catch (_) {}
+  try { selected=localStorage.getItem(key)||"dark"; } catch (_) {}
   function apply(value) {
     selected=(value==="dark"||value==="light")?value:"system";
     var dark=selected==="dark" || (selected==="system" && media.matches);
@@ -20,6 +20,6 @@
     });});
   });
   media.addEventListener("change",function(){if(selected==="system")apply(selected);});
-  window.addEventListener("storage",function(event){if(event.key===key)apply(event.newValue||"system");});
+  window.addEventListener("storage",function(event){if(event.key===key)apply(event.newValue||"dark");});
 })();
 </script>

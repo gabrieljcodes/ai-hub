@@ -27,6 +27,33 @@ pub(crate) async fn handler(
     level: Option<axum::Extension<ai_memory_core::AuthLevel>>,
     viewer: Option<axum::Extension<ai_memory_core::AuthorizedViewer>>,
 ) -> Result<Html<String>, StatusCode> {
+    if matches!(
+        level.as_ref().map(|axum::Extension(l)| l),
+        Some(ai_memory_core::AuthLevel::Anonymous)
+    ) {
+        let dashboard = DashboardStats {
+            project_count: 0,
+            page_count: 0,
+            session_count: 0,
+            observation_count: 0,
+            open_session_count: 0,
+            last_activity_relative: String::new(),
+            ingest: None,
+        };
+        let okf_dialog = okf_dialog(&state);
+        let html = ProjectsView {
+            projects: vec![],
+            dashboard,
+            okf_dialog,
+            mail_total: 0,
+            mail_projects: vec![],
+            mail_hidden: 0,
+        }
+        .render()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(Html(html));
+    }
+
     let viewer_id = viewer.map(|axum::Extension(viewer)| viewer.user());
     let (summaries, counts, registered) = tokio::try_join!(
         state.reader.list_projects_with_stats(viewer_id),

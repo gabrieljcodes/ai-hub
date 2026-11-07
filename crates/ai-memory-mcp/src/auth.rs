@@ -393,6 +393,36 @@ pub(crate) async fn authenticate_token(
         }
     }
 
+    if let Some(human) = state.human.as_ref()
+        && let Ok(auto_pepper) = human.writer.ensure_auto_token_pepper().await
+        && !auto_pepper.is_empty()
+    {
+        let pepper = TokenPepper::new(auto_pepper);
+        let hash = hash_token(provided, &pepper);
+        if let Ok(Some(hit)) = human.reader.find_active_user_by_token_hash(hash).await {
+            debug!(actor.user = %hit.user.username, "authenticated as DB user via auto_token_pepper");
+            let actor = ActorContext {
+                user: Some(hit.user.username.clone()),
+                name: hit.user.name.clone(),
+                email: hit.user.email.clone(),
+                ..ActorContext::default()
+            };
+            req.extensions_mut().insert(actor);
+            req.extensions_mut().insert(hit.user.id);
+            req.extensions_mut()
+                .insert(ai_memory_core::AuthorizedViewer(hit.user.id));
+            req.extensions_mut().insert(AuthLevel::User);
+            let writer = human.writer.clone();
+            let user_id = hit.user.id;
+            let credential_id = hit.credential_id;
+            tokio::spawn(async move {
+                let _ = writer.touch_api_credential(credential_id).await;
+                let _ = writer.touch_user_last_seen(user_id).await;
+            });
+            return Ok(BearerAuth::Authenticated);
+        }
+    }
+
     Ok(BearerAuth::Rejected)
 }
 
